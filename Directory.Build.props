@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <!-- Do not expose the build machine's user directory through module debug paths. -->
+    <PathMap>$(MSBuildThisFileDirectory)=/_/UnifiedPicoModule/</PathMap>
+  </PropertyGroup>
+</Project>

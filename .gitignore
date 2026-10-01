@@ -1,0 +1,74 @@
+# Build outputs, downloaded SDKs and release packages
+**/bin/
+**/obj/
+/.sdk/
+/artifacts/
+*.dll
+*.exe
+*.pdb
+*.zip
+*.nupkg
+
+# Runtime/user configuration: publish only config/UnifiedPicoModule.example.json
+**/UnifiedPicoModule.json
+**/PicoFacialDataModule.json
+**/PicoModuleConfig.json
+**/config.ini
+*.local.json
+*.private.json
+*.current-settings.json
+*.imported.json
+*.migration.json
+*migration*.txt
+*migration*.json
+*import-report*.txt
+*import-report*.json
+
+# Local implementation history and machine-specific agent instructions
+/docs/agents/
+# Read-only third-party source snapshots (not packaged, no license granted)
+/reference/
+/docs/private/
+/AGENTS.md
+/local/
+/private/
+
+# Logs, packet captures and biometric/runtime recordings
+/logs/
+/captures/
+/recordings/
+*.log
+*.dmp
+*.pcap
+*.pcapng
+*.har
+
+# Credentials and private environment overrides (never rely on ignore rules alone)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+*credentials*.json
+*secrets*.json
+
+# Editor and temporary files
+.vs/
+.vscode/
+.idea/
+.history/
+.cache/
+*.user
+*.suo
+*.tmp
+*.bak
+*.orig
+*.rej
+*~
+Thumbs.db
+.DS_Store
+
+# Local logo explorations; canonical release artwork uses stable logo-* names.
+/assets/branding/unified-pico-logo-v*.png

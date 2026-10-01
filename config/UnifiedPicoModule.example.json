@@ -1,0 +1,140 @@
+{
+  "ConfigVersion": 1,
+  "Source": "Auto",
+  "DisableEyeTracking": false,
+  "DisableFaceTracking": false,
+  "Bridge": {
+    "IP": null,
+    "ListenAddress": "0.0.0.0",
+    "Protocol": null,
+    "ReconnectMs": 2000,
+    "ControlTimeoutMs": 30000
+  },
+  "Streaming": {
+    "ListenAddress": "0.0.0.0",
+    "LocalOnly": true,
+    "IP": null,
+    "Protocol": null,
+    "SessionTimeoutMs": 2000,
+    "HeaderProfile": null
+  },
+  "EyePolicy": "NativePreferred",
+  "EyeGain": {
+    "LeftX": 1,
+    "LeftY": 1,
+    "RightX": 1,
+    "RightY": 1,
+    "LeftOpenness": 1,
+    "RightOpenness": 1
+  },
+  "Stale": {
+    "EyeMs": 250,
+    "FaceMs": 250,
+    "NeutralPupilMillimeters": 3.5
+  },
+  "AllowFallback": false,
+  "AutoSelectionWindowMs": 1500,
+  "LegacyPerEyeGaze": false,
+  "LegacyExpressionCeiling": false,
+  "PostProcessing": {
+    "ChannelGain": {
+      "Enabled": true,
+      "DefaultGain": 1,
+      "Gains": {
+        "EyeWideLeft": 2,
+        "EyeWideRight": 2,
+        "EyeSquintLeft": 1,
+        "EyeSquintRight": 1,
+        "JawOpen": 1
+      }
+    },
+    "BrowInnerSeparation": {
+      "Enabled": false,
+      "Strength": 1
+    },
+    "BrowDownResponse": {
+      "Enabled": false,
+      "Center": 0.7,
+      "Slope": 10,
+      "Gain": 1,
+      "BlinkAsymmetryStrength": 0
+    },
+    "SquintResponse": {
+      "Enabled": false,
+      "Gain": 1,
+      "Gamma": 1,
+      "BlinkInfluence": 0
+    },
+    "FrownJawAttenuation": {
+      "Enabled": false,
+      "JawThreshold": 0.1,
+      "TransitionWidth": 0.1,
+      "MaxReduction": 0.5
+    },
+    "ShrugToFrown": {
+      "Enabled": false,
+      "Threshold": 0.6,
+      "Range": 0.2,
+      "Gain": 1,
+      "RollBlockThreshold": 0.3,
+      "PuckerBlockThreshold": 0.4,
+      "FunnelBlockThreshold": 0.1,
+      "TransitionWidth": 0.05,
+      "ConsumeShrug": false
+    },
+    "UpperUpPressGate": {
+      "Enabled": false,
+      "PressThreshold": 0.1,
+      "TransitionWidth": 0.1,
+      "MaxReduction": 1
+    },
+    "PuckerFunnelAssist": {
+      "Enabled": false,
+      "PuckerThreshold": 0.3,
+      "PressThreshold": 0.2,
+      "TransitionWidth": 0.1,
+      "Strength": 1
+    },
+    "SmileRollSuppression": {
+      "Enabled": false,
+      "RollThreshold": 0.2,
+      "TransitionWidth": 0.1,
+      "MaxReduction": 1
+    },
+    "StretchCompetition": {
+      "Enabled": false,
+      "StretchThreshold": 0.05,
+      "SmileCeiling": 0.4,
+      "TransitionWidth": 0.1,
+      "SmileReduction": 0.5,
+      "UpperUpReduction": 0.5
+    },
+    "Symmetry": {
+      "Enabled": false,
+      "Groups": [
+        "Smile"
+      ],
+      "Method": "Max",
+      "Strength": 1
+    },
+    "CheekAsymmetry": {
+      "Enabled": false,
+      "MouthDifferenceThreshold": 0.1,
+      "TransitionWidth": 0.1,
+      "Gain": 1,
+      "MouthSmoothingMs": 80
+    },
+    "TongueHold": {
+      "Enabled": false,
+      "HoldMs": 120,
+      "DropThreshold": 0.15
+    },
+    "TongueJawGate": {
+      "Enabled": false,
+      "JawThreshold": 0.5,
+      "TransitionWidth": 0.1,
+      "MaxReduction": 1
+    }
+  },
+  "Migration": null
+}

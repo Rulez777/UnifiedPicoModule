@@ -1,0 +1,154 @@
+name: Publish release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build release package
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+      # tools/build.ps1 independently verifies this commit and its API fingerprints.
+      VRCFT_COMMIT: 2cafd0e387386b54997797ee4709cad4befe9274
+    outputs:
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - name: Check out module
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Verify release version
+        id: version
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = $env:GITHUB_REF_NAME
+          $pattern = '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$'
+          if ($env:GITHUB_REF_TYPE -ne 'tag' -or $tag -cnotmatch $pattern) {
+              throw 'Expected vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-prerelease (no build metadata).'
+          }
+          $suffix = $Matches[4]
+          if ($suffix) {
+              foreach ($identifier in $suffix.Split('.')) {
+                  if ($identifier -match '^0[0-9]+$') { throw 'Numeric prerelease identifiers cannot have leading zeros.' }
+              }
+          }
+          $version = $tag.Substring(1)
+          $metadata = Get-Content module.json -Raw | ConvertFrom-Json
+          [xml]$project = Get-Content UnifiedPicoModule.csproj -Raw
+          $projectVersions = @($project.Project.PropertyGroup.Version | Where-Object { $_ })
+          if ($metadata.Version -cne $version -or $projectVersions.Count -ne 1 -or $projectVersions[0] -cne $version) {
+              throw 'Tag, module.json Version and UnifiedPicoModule.csproj Version must match exactly.'
+          }
+          "prerelease=$([bool]$suffix)".ToLowerInvariant() >> $env:GITHUB_OUTPUT
+          "RELEASE_VERSION=$version" >> $env:GITHUB_ENV
+
+      - name: Set up .NET 10 SDK
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Check out pinned VRCFT SDK source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: benaclejames/VRCFaceTracking
+          ref: ${{ env.VRCFT_COMMIT }}
+          path: .sdk/source/VRCFaceTracking
+          persist-credentials: false
+
+      - name: Build and package
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./tools/package.ps1 -SdkSource .sdk/source/VRCFaceTracking
+          if ($LASTEXITCODE -ne 0) { throw 'Build or packaging failed.' }
+
+      - name: Prepare public release assets
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $packages = @(Get-ChildItem artifacts -Filter "UnifiedPicoModule-$env:RELEASE_VERSION-*.zip" -File)
+          if ($packages.Count -ne 1) { throw 'Expected exactly one freshly built module ZIP.' }
+          $zip = [IO.Compression.ZipFile]::OpenRead($packages[0].FullName)
+          try {
+              foreach ($entry in $zip.Entries) {
+                  $name = $entry.FullName.Replace('\', '/')
+                  if ($name -match '(^|/)(agents|archive|private|\.sdk|bin|obj)/|migration|current-settings|\.(log|pcap|pcapng|har|pdb)$' -or
+                      ($name.EndsWith('.dll', [StringComparison]::OrdinalIgnoreCase) -and $name -cne 'UnifiedPicoModule.dll')) {
+                      throw "Non-public or host-dependency package entry: $name"
+                  }
+              }
+              $entry = $zip.GetEntry('UnifiedPicoModule.json')
+              if ($null -eq $entry) { throw 'Default configuration missing from module ZIP.' }
+              $reader = [IO.StreamReader]::new($entry.Open())
+              try { $config = $reader.ReadToEnd() | ConvertFrom-Json } finally { $reader.Dispose() }
+              # Model defaults enable only ChannelGain (EyeWide x2); any other enabled rule means personal settings.
+              if ($config.Bridge.IP -or $config.Streaming.IP -or $config.Migration -or
+                  @($config.PostProcessing.PSObject.Properties | Where-Object { $_.Value.Enabled -and $_.Name -cne 'ChannelGain' }).Count) {
+                  throw 'Release ZIP must contain clean model defaults, not personal settings.'
+              }
+          } finally { $zip.Dispose() }
+          $directory = New-Item -ItemType Directory -Path artifacts/release
+          $name = "UnifiedPicoModule-$env:RELEASE_VERSION.zip"
+          $destination = Join-Path $directory.FullName $name
+          Copy-Item $packages[0].FullName $destination
+          $hash = (Get-FileHash $destination -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $name" | Set-Content "$destination.sha256" -Encoding ascii
+
+      - name: Transfer release assets
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-${{ github.ref_name }}
+          path: |
+            artifacts/release/*.zip
+            artifacts/release/*.zip.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download release assets
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: release-${{ github.ref_name }}
+          path: release
+
+      - name: Publish verified assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          IS_PRERELEASE: ${{ needs.build.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          cd release
+          sha256sum --check --strict -- *.zip.sha256
+          options=()
+          if [[ "$IS_PRERELEASE" == 'true' ]]; then
+            options+=(--prerelease)
+          fi
+          # Publish only after assets are attached. Do not overwrite an existing release.
+          gh release create "$RELEASE_TAG" *.zip *.zip.sha256 \
+            --verify-tag --draft --generate-notes \
+            --title "UnifiedPicoModule $RELEASE_TAG" "${options[@]}"
+          gh release edit "$RELEASE_TAG" --draft=false

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title">
+<title id="title">UnifiedPicoModule</title>
+<defs><mask id="smile"><rect width="1024" height="1024" fill="white"/><path d="M410 735 Q512 799 614 735" fill="none" stroke="black" stroke-width="16" stroke-linecap="round"/></mask></defs>
+<rect width="1024" height="1024" rx="96" fill="#171B22"/>
+<g fill="#E5E7EB"><path mask="url(#smile)" d="M196 288 Q196 210 280 210 Q364 210 364 288 V576 Q364 696 512 696 Q660 696 660 576 V288 Q660 210 744 210 Q828 210 828 288 V580 Q828 850 512 850 Q196 850 196 580 Z"/>
+<path fill-rule="evenodd" d="M448 462 H576 A82 82 0 0 1 576 626 H448 A82 82 0 0 1 448 462 Z M448 496 A48 48 0 0 0 448 592 H576 A48 48 0 0 0 576 496 Z"/></g>
+<g fill="#A5D8E8"><rect x="421" y="508" width="60" height="74" rx="30"/><rect x="543" y="508" width="60" height="74" rx="30"/></g></svg>

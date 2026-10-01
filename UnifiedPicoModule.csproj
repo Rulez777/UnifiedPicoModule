@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Version>0.1.0</Version>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <AssemblyName>UnifiedPicoModule</AssemblyName>
+    <VrcftSdkDir Condition="'$(VrcftSdkDir)' == ''">$(MSBuildThisFileDirectory).sdk</VrcftSdkDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="VRCFaceTracking.SDK"><HintPath>$(VrcftSdkDir)/VRCFaceTracking.SDK.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="VRCFaceTracking.Core"><HintPath>$(VrcftSdkDir)/VRCFaceTracking.Core.dll</HintPath><Private>false</Private></Reference>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.1" PrivateAssets="all" />
+    <Compile Remove="tools/**/*.cs;.sdk/**/*.cs;artifacts/**/*.cs;docs/**/*.cs;reference/**/*.cs" />
+    <EmbeddedResource Include="assets/branding/module-icon.png" LogicalName="UnifiedPicoModule.Branding.ModuleIcon.png" />
+  </ItemGroup>
+  <Target Name="CheckSdk" BeforeTargets="ResolveReferences">
+    <Error Condition="!Exists('$(VrcftSdkDir)/VRCFaceTracking.SDK.dll') Or !Exists('$(VrcftSdkDir)/VRCFaceTracking.Core.dll')" Text="Prepare pinned VRCFT 5.4.5 SDK with tools/build.ps1 or set VrcftSdkDir. No host installation is performed." />
+    <GetAssemblyIdentity AssemblyFiles="$(VrcftSdkDir)/VRCFaceTracking.SDK.dll;$(VrcftSdkDir)/VRCFaceTracking.Core.dll">
+      <Output TaskParameter="Assemblies" ItemName="PinnedSdkIdentity" />
+    </GetAssemblyIdentity>
+    <Error Condition="'%(PinnedSdkIdentity.Version)' != '5.4.5.0'" Text="VRCFT SDK/Core assembly version must be 5.4.5.0, found %(PinnedSdkIdentity.Version)." />
+  </Target>
+</Project>

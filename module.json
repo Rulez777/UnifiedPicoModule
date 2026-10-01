@@ -1,0 +1,11 @@
+{
+  "ModuleId": "8322e16d-c38b-42f0-8d35-68f27227b442",
+  "Version": "0.1.0",
+  "AuthorName": "UnifiedPicoModule contributors",
+  "ModuleName": "Unified PICO Face Tracking",
+  "ModuleDescription": "Independent PICO receiver with native-priority eyes, four wire formats, explicit Bridge subscriptions, and configurable postprocessing. Only left/right EyeWide x2 gain is enabled by default. BridgeSplit and StreamingHeader16 (29765, with a single sender: PICO Connect 10.6.6) passed hardware acceptance rounds on 2026-10-01; the strict HeaderProfile mode, the 29763 headerless path, other senders/versions, full headset reboot and long-run stability are not verified.",
+  "UsageInstructions": "Disable old PICO modules before manually installing. Requires the verified VRCFT 5.4.5/net10 SDK baseline. Configure UnifiedPicoModule.json and restart; defaults enable only ChannelGain for left/right EyeWide x2, leaving EyeSquint uncompensated and other rules off. Header16/29765 accepts payloads of at least 908 bytes with trackingType=2 by default (matching SAFT/pike, and not depending on the validity floats); an optional sender-confirmed Streaming.HeaderProfile enables strict six-field validation. Accepted with a single sender, PICO Connect 10.6.6; other senders/versions and the strict mode are not yet accepted. No device/streaming/Avatar settings are changed.",
+  "DownloadUrl": "",
+  "ModulePageUrl": "https://github.com/WolalaQAQ/UnifiedPicoModule",
+  "DllFileName": "UnifiedPicoModule.dll"
+}

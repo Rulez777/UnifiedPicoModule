@@ -1,0 +1,116 @@
+using Microsoft.Extensions.Logging;
+using UnifiedPicoModule.Configuration;
+using UnifiedPicoModule.Core;
+using UnifiedPicoModule.Runtime;
+using VRCFaceTracking;
+using VRCFaceTracking.Core.Library;
+using VRCFaceTracking.Core.Params.Expressions;
+
+namespace UnifiedPicoModule.Sdk;
+
+public sealed class UnifiedPicoTrackingModule : ExtTrackingModule
+{
+    private readonly object gate = new();
+    private static readonly (ExpressionChannel Channel, UnifiedExpressions Sdk)[] Channels =
+        Enum.GetValues<ExpressionChannel>().Select(c => (c, Enum.Parse<UnifiedExpressions>(c.ToString(), false))).ToArray();
+    private ModuleConfig config = new();
+    private TrackingPipeline? pipeline;
+    private SourceCoordinator? coordinator;
+    private DiagnosticReporter? diagnostics;
+    private bool ownsEye, ownsFace, stopped = true, wasActive;
+    private double lastError;
+
+    public override (bool SupportsEye, bool SupportsExpression) Supported => (true, true);
+    public override (bool eyeSuccess, bool expressionSuccess) Initialize(bool eyeAvailable, bool expressionAvailable)
+    {
+        lock (gate)
+        {
+            StopSources();
+            ModuleInformation.Name = "Unified PICO Face Tracking";
+            // Keep the stream available for the host's deferred image loading.
+            // Embedded PNG works offline and does not depend on loose asset paths.
+            if (ModuleInformation.StaticImages is not { Count: > 0 })
+            {
+                var icon = typeof(UnifiedPicoTrackingModule).Assembly
+                    .GetManifestResourceStream("UnifiedPicoModule.Branding.ModuleIcon.png");
+                ModuleInformation.StaticImages = icon is null ? [] : [icon];
+                if (icon is null) Log("Embedded module icon is missing; tracking remains available.");
+            }
+            ModuleInformation.Active = true;
+            config = ConfigStore.Load(Path.Combine(Path.GetDirectoryName(GetType().Assembly.Location)!, "UnifiedPicoModule.json"), Log);
+            var enabledRules = typeof(PostProcessingSettings).GetProperties().Where(p =>
+                (bool?)p.PropertyType.GetProperty("Enabled")?.GetValue(p.GetValue(config.PostProcessing)) == true).Select(p => p.Name).ToArray();
+            Log("Enabled postprocessing: " + (enabledRules.Length == 0 ? "none (neutral mapping)" : string.Join(", ", enabledRules)) + "; fixed ConfigVersion=1 order; no runtime preset.");
+            ownsEye = eyeAvailable && !config.DisableEyeTracking;
+            ownsFace = expressionAvailable && !config.DisableFaceTracking;
+            // The pipeline must not advance time-state for a host-unavailable output group.
+            config.DisableEyeTracking = !ownsEye; config.DisableFaceTracking = !ownsFace;
+            pipeline = new(config); diagnostics = new(Log); stopped = false;
+            Status = ownsEye || ownsFace ? ModuleState.Active : ModuleState.Idle;
+            if (ownsEye || ownsFace) StartSources();
+            Log("UnifiedPicoModule 0.1.0: VRCFT SDK 5.4.5 / net10; no installation or host configuration changes. UDP is unauthenticated: trusted LAN only. Live compatibility and coefficients are not calibrated/verified.");
+            return (ownsEye, ownsFace);
+        }
+    }
+    public override void Update()
+    {
+        lock (gate)
+        {
+            if (!stopped && pipeline is not null)
+            {
+                var active = ModuleInformation.Active && Status == ModuleState.Active && (ownsEye || ownsFace);
+                if (!active)
+                {
+                    if (wasActive) { StopSources(); pipeline.Reset(); Write(pipeline.Neutral); }
+                    wasActive = false;
+                }
+                else
+                {
+                    try
+                    {
+                        if (coordinator is null) StartSources();
+                        var now = MonotonicClock.Now;
+                        var selected = coordinator!.Select(now);
+                        var output = pipeline.Evaluate(selected, now);
+                        Write(output); diagnostics!.Report(coordinator.Snapshots, selected, output, now);
+                        wasActive = true;
+                    }
+                    catch (Exception exception)
+                    {
+                        pipeline.Reset(); Write(pipeline.Neutral);
+                        var now = MonotonicClock.Now;
+                        if (now - lastError > 5) { Log($"Update recovered to neutral: {exception.GetType().Name}: {exception.Message}"); lastError = now; }
+                    }
+                }
+            }
+        }
+        // The SDK invokes Update in an unpaced loop. Never spin or wait indefinitely for UDP.
+        Thread.Sleep(2);
+    }
+    public override void Teardown()
+    {
+        lock (gate)
+        {
+            stopped = true; StopSources();
+            if (pipeline is not null) { pipeline.Reset(); Write(pipeline.Neutral); }
+            pipeline = null; wasActive = false; ownsEye = ownsFace = false;
+            ModuleInformation.Active = false; Status = ModuleState.Uninitialized;
+        }
+    }
+    private void StartSources() { coordinator = new(config, Log); wasActive = true; }
+    private void StopSources() { coordinator?.Dispose(); coordinator = null; }
+    private void Log(string message) => Logger?.LogInformation("{UnifiedPicoMessage}", message);
+
+    // Sole UnifiedTracking write boundary; never zero SDK channels we do not own.
+    private void Write(TrackingOutput output)
+    {
+        var data = UnifiedTracking.Data;
+        foreach (var (channel, sdk) in Channels)
+            if (ExpressionFrame.IsEye(channel) ? ownsEye : ownsFace) data.Shapes[(int)sdk].Weight = output.Expressions[channel];
+        if (!ownsEye) return;
+        data.Eye.Left.Gaze.x = output.Left.GazeX; data.Eye.Left.Gaze.y = output.Left.GazeY;
+        data.Eye.Left.Openness = output.Left.Openness; data.Eye.Left.PupilDiameter_MM = output.Left.PupilMillimeters;
+        data.Eye.Right.Gaze.x = output.Right.GazeX; data.Eye.Right.Gaze.y = output.Right.GazeY;
+        data.Eye.Right.Openness = output.Right.Openness; data.Eye.Right.PupilDiameter_MM = output.Right.PupilMillimeters;
+    }
+}
