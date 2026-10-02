@@ -34,9 +34,17 @@ public sealed class SourceCoordinator : IDisposable
         foreach (var source in sources) source.Start(cancellation.Token);
     }
 
-    public SourceSnapshot? Select(double now)
+    public (SourceSnapshot? Selected, IReadOnlyList<SourceSnapshot> Snapshots, double Now) Select()
     {
-        var snapshots = sources.Select(s => s.Snapshot).ToArray();
+        // Capture immutable snapshots before sampling the clock so none has a future arrival.
+        // Return this same batch and time for pipeline evaluation and diagnostics.
+        var snapshots = Snapshots;
+        var now = MonotonicClock.Now;
+        return (Select(snapshots, now), snapshots, now);
+    }
+
+    private SourceSnapshot? Select(IReadOnlyList<SourceSnapshot> snapshots, double now)
+    {
         if (selected is { } kind)
         {
             var current = snapshots.FirstOrDefault(s => s.Source == kind);

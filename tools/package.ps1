@@ -20,7 +20,7 @@ $stamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
 $stage = Join-Path $artifacts "stage-$stamp"
 New-Item -ItemType Directory -Path $stage | Out-Null
 Copy-Item $dll $stage
-foreach ($file in @('module.json','README.md','README_zh.md','CONTRIBUTING.md','CONTRIBUTING_zh.md','THIRD_PARTY_NOTICES.md','THIRD_PARTY_NOTICES_zh.md','LICENSE')) {
+foreach ($file in @('module.json','README.md','README_zh.md','CHANGELOG.md','CHANGELOG_zh.md','CONTRIBUTING.md','CONTRIBUTING_zh.md','THIRD_PARTY_NOTICES.md','THIRD_PARTY_NOTICES_zh.md','LICENSE')) {
     Copy-Item (Join-Path $root $file) $stage
 }
 # Do not recursively copy docs: agent-only records can contain personal paths/history.

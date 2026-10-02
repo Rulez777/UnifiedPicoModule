@@ -14,7 +14,7 @@ UnifiedPicoModule 是面向 VRCFaceTracking（VRCFT）的 PICO 眼动与面部�
 
 PICO 头显的追踪数据可以通过多种发送端输出，包括 PicoFacialBridge、PICO Connect、Streaming Assistant 以及早期的 PicoFacialDataDaemon。这些发送端使用的数据格式和端口各不相同。本模块支持上述全部格式，能够自动识别当前可用的数据源，并将数据统一输出至 VRCFT，因此无需针对不同的发送端分别安装模块。
 
-> 当前版本为 0.1.0 预览版，基于 VRCFT 5.4.5（net10.0）构建。各使用组合的验证情况请参阅[兼容性](#兼容性)。
+> 当前版本为 0.1.1 预览版，基于 VRCFT 5.4.5（net10.0）构建。各使用组合的验证情况请参阅[兼容性](#兼容性)，版本变化见[更新日志](CHANGELOG_zh.md)。
 
 ## 支持的发送端
 

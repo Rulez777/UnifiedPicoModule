@@ -14,7 +14,7 @@ UnifiedPicoModule is a PICO eye and face tracking module for VRCFaceTracking (VR
 
 Tracking data from a PICO headset can be delivered by several senders, including PicoFacialBridge, PICO Connect, Streaming Assistant and the earlier PicoFacialDataDaemon. Each sender uses its own data format and port. This module supports all of these formats, detects which source is currently available, and forwards its data to VRCFT through a single output, so there is no need to install a separate module for each sender.
 
-> The current release is a 0.1.0 preview, built against VRCFT 5.4.5 (net10.0). See [Compatibility](#compatibility) for which combinations have been verified.
+> The current release is a 0.1.1 preview, built against VRCFT 5.4.5 (net10.0). See [Compatibility](#compatibility) for which combinations have been verified and the [changelog](CHANGELOG.md) for release changes.
 
 ## Supported senders
 

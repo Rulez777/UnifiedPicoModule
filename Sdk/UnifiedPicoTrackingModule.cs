@@ -48,7 +48,7 @@ public sealed class UnifiedPicoTrackingModule : ExtTrackingModule
             pipeline = new(config); diagnostics = new(Log); stopped = false;
             Status = ownsEye || ownsFace ? ModuleState.Active : ModuleState.Idle;
             if (ownsEye || ownsFace) StartSources();
-            Log("UnifiedPicoModule 0.1.0: VRCFT SDK 5.4.5 / net10; no installation or host configuration changes. UDP is unauthenticated: trusted LAN only. Live compatibility and coefficients are not calibrated/verified.");
+            Log("UnifiedPicoModule 0.1.1: VRCFT SDK 5.4.5 / net10; no installation or host configuration changes. UDP is unauthenticated: trusted LAN only. Live compatibility and coefficients are not calibrated/verified.");
             return (ownsEye, ownsFace);
         }
     }
@@ -69,10 +69,9 @@ public sealed class UnifiedPicoTrackingModule : ExtTrackingModule
                     try
                     {
                         if (coordinator is null) StartSources();
-                        var now = MonotonicClock.Now;
-                        var selected = coordinator!.Select(now);
+                        var (selected, snapshots, now) = coordinator!.Select();
                         var output = pipeline.Evaluate(selected, now);
-                        Write(output); diagnostics!.Report(coordinator.Snapshots, selected, output, now);
+                        Write(output); diagnostics!.Report(snapshots, selected, output, now);
                         wasActive = true;
                     }
                     catch (Exception exception)

@@ -69,7 +69,7 @@ Changing the SDK version requires updating the commit and fingerprints in the sc
 ### UnifiedPicoModule.csproj
 
 - Targets `net10.0`, with nullable reference types and implicit usings enabled, and all warnings treated as errors.
-- The version is set by the `Version` property and is currently `0.1.0`.
+- The version is set by the `Version` property and is currently `0.1.1`.
 - References `VRCFaceTracking.SDK.dll` and `VRCFaceTracking.Core.dll` under `$(VrcftSdkDir)` through `HintPath`, with `Private=false`, so neither DLL is copied to the output directory. `VrcftSdkDir` defaults to `.sdk` in the repository and can be overridden as an MSBuild property.
 - The `CheckSdk` target checks that both DLLs exist before references are resolved and requires their assembly version to be `5.4.5.0`.
 - References `Microsoft.Extensions.Logging.Abstractions` 10.0.1 with `PrivateAssets="all"`.
@@ -93,7 +93,7 @@ The module metadata read by VRCFT contains the following fields:
 | Field | Current value or description |
 |---|---|
 | `ModuleId` | `8322e16d-c38b-42f0-8d35-68f27227b442`; also determines the module's directory name under `CustomLibs` |
-| `Version` | `0.1.0`; must match the version in `UnifiedPicoModule.csproj` |
+| `Version` | `0.1.1`; must match the version in `UnifiedPicoModule.csproj` |
 | `ModuleName` | `Unified PICO Face Tracking` |
 | `ModuleDescription` / `UsageInstructions` | Text shown in the module list |
 | `DownloadUrl` | Currently empty |
@@ -121,7 +121,7 @@ The package has a flat layout in which the root is the module directory. It cont
 - `UnifiedPicoModule.json`: the default configuration exported from the configuration model by the configuration tool's `defaults` command
 - `config/UnifiedPicoModule.example.json`: identical to the default configuration above
 - `sdk-provenance.json`
-- `README.md`, `README_zh.md`, `CONTRIBUTING.md`, `CONTRIBUTING_zh.md`, `THIRD_PARTY_NOTICES.md`, `THIRD_PARTY_NOTICES_zh.md`, `LICENSE`
+- `README.md`, `README_zh.md`, `CHANGELOG.md`, `CHANGELOG_zh.md`, `CONTRIBUTING.md`, `CONTRIBUTING_zh.md`, `THIRD_PARTY_NOTICES.md`, `THIRD_PARTY_NOTICES_zh.md`, `LICENSE`
 - the configuration reference, post-processing reference, protocol reference, development guide, and privacy and network security documents under `docs/`, each in English and Chinese
 - `tools/ConfigTool/README.md`, `tools/ConfigTool/README_zh.md`
 - the `logo-dark`, `logo-light` and `module-icon` images under `assets/branding/`, each as SVG and PNG
@@ -149,8 +149,8 @@ The timestamp in the file names keeps each run from overwriting earlier output. 
 4. Commit and push these changes, then create and push a tag for that commit:
 
 ```powershell
-git tag -a v0.1.0 -m "UnifiedPicoModule 0.1.0"
-git push origin v0.1.0
+git tag -a v0.1.1 -m "UnifiedPicoModule 0.1.1"
+git push origin v0.1.1
 ```
 
 The tag format is `vMAJOR.MINOR.PATCH`, optionally followed by a SemVer pre-release suffix such as `v0.2.0-rc.1`. Build metadata (`+build`) is not accepted, and leading zeros are not allowed in the numeric parts or in numeric pre-release identifiers.
