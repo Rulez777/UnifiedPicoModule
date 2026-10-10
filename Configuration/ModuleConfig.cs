@@ -11,6 +11,7 @@ public sealed class ModuleConfig
     public BridgeSettings Bridge { get; set; } = new();
     public StreamingSettings Streaming { get; set; } = new();
     public EyePolicy EyePolicy { get; set; } = EyePolicy.NativePreferred;
+    public OpennessPolicy OpennessPolicy { get; set; } = OpennessPolicy.Auto;
     public EyeGainSettings EyeGain { get; set; } = new();
     public StaleSettings Stale { get; set; } = new();
     public bool AllowFallback { get; set; }

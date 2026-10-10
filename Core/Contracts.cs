@@ -7,6 +7,7 @@ public enum SourceKind { Bridge, Streaming }
 public enum InputProtocol { BridgeSplit, DaemonLegacy536, StreamingHeader16, StreamingBodyOnly }
 public enum ConnectionState { Searching, Connected, MissingFrames, Stopped, Faulted }
 public enum EyePolicy { NativePreferred, LegacyNative, BlendshapeOnly }
+public enum OpennessPolicy { Auto, BlendshapeOnly, NativePreferred }
 public enum SourceSelection { Auto, Bridge, Streaming }
 
 // These numeric identifiers describe the PICO wire format, not an SDK enum.
@@ -114,5 +115,6 @@ public sealed class ExpressionFrame
     public static bool IsEye(ExpressionChannel channel) => (int)channel <= (int)ExpressionChannel.BrowOuterUpRight;
 }
 public sealed record ResolvedEye(float GazeX = 0, float GazeY = 0, float Openness = 1,
-    float PupilMillimeters = 3.5f, string GazeOrigin = "neutral", bool RealPupil = false);
+    float PupilMillimeters = 3.5f, string GazeOrigin = "neutral", bool RealPupil = false,
+    string OpennessOrigin = "neutral");
 public sealed record TrackingOutput(ExpressionFrame Expressions, ResolvedEye Left, ResolvedEye Right);

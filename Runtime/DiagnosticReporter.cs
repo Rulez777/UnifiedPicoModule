@@ -22,7 +22,7 @@ public sealed class DiagnosticReporter(Action<string> log)
                 $"eyeMorphValid={snapshot.Face?.EyeValid == true} faceValid={snapshot.Face?.FaceValid == true} " +
                 $"modeKnown={snapshot.Capabilities.ModeKnown} enhance={snapshot.Capabilities.Enhanced} independent={snapshot.Capabilities.IndependentPerEye} drops={snapshot.DroppedPackets}; {snapshot.Detail}");
         }
-        log($"Eye origin L/R={output.Left.GazeOrigin}/{output.Right.GazeOrigin}; pupil L/R={(output.Left.RealPupil ? "measured" : "estimated")}/{(output.Right.RealPupil ? "measured" : "estimated")}. Connected-but-no-data cannot reliably distinguish pause from missing sensor frames.");
+        log($"Eye origin L/R={output.Left.GazeOrigin}/{output.Right.GazeOrigin}; openness L/R={output.Left.OpennessOrigin}/{output.Right.OpennessOrigin}; pupil L/R={(output.Left.RealPupil ? "measured" : "estimated")}/{(output.Right.RealPupil ? "measured" : "estimated")}. Connected-but-no-data cannot reliably distinguish pause from missing sensor frames.");
         lastReport = now;
     }
     private static string Age(double? arrival, double now) => arrival is { } time ? $"{Math.Max(0, now - time) * 1000:F0}ms" : "none";

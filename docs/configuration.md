@@ -24,10 +24,6 @@ General rules:
 
 Personal configurations and migration reports can contain IP addresses or local paths. See [Privacy and network security](privacy.md) before sharing them.
 
-## Verification status
-
-On 2026-10-01, BridgeSplit passed its first round of acceptance testing on a headset. On the same day, PICO Connect 10.6.6 (`faceTrackingTransferProtocol=2`) passed acceptance on port 29765, with a measured datagram size of 912 bytes. The strict `HeaderProfile` mode, the 29763 headerless format, other senders and versions, the PicoFacialDataDaemon 536-byte format, PicoFacialBridge normal mode, recovery after a full headset reboot and long-term stability have not been verified. The post-processing coefficients and the coefficients produced by migration have not been calibrated on a headset; they are starting values, not recommendations. The field descriptions below do not repeat these limitations.
-
 ## Top-level fields
 
 | Field | Type | Default | Valid values | Description |
@@ -38,7 +34,8 @@ On 2026-10-01, BridgeSplit passed its first round of acceptance testing on a hea
 | `DisableFaceTracking` | boolean | `false` | | Disables expression output |
 | `Bridge` | object | see [Bridge](#bridge) | | Receiver settings for PicoFacialBridge and PicoFacialDataDaemon (port 9030) |
 | `Streaming` | object | see [Streaming](#streaming) | | Receiver settings for streaming formats (ports 29765 and 29763) |
-| `EyePolicy` | enum | `NativePreferred` | `NativePreferred`, `LegacyNative`, `BlendshapeOnly` | Where gaze and eye openness come from; see [Eye policy and gain](#eye-policy-and-gain) |
+| `EyePolicy` | enum | `NativePreferred` | `NativePreferred`, `LegacyNative`, `BlendshapeOnly` | Gaze source policy; see [Eye policy and gain](#eye-policy-and-gain) |
+| `OpennessPolicy` | enum | `Auto` | `Auto`, `BlendshapeOnly`, `NativePreferred` | Openness source policy; see [Eye policy and gain](#eye-policy-and-gain) |
 | `EyeGain` | object | all `1` | | Gain for gaze and openness of each eye |
 | `Stale` | object | see [Stale](#stale) | | Data expiry and the neutral pupil value |
 | `AllowFallback` | boolean | `false` | | Whether to switch entirely to the other source when the current one becomes unavailable |
@@ -60,7 +57,7 @@ If `ConfigVersion` is missing, duplicated or not 1, the whole configuration is r
 | `Bridge` | Bridge only | Bridge is always used |
 | `Streaming` | Streaming only | Streaming is always used, without waiting |
 
-Usable data means data that arrived within the `Stale` limits and can actually be output under the current `EyePolicy` and output toggles. Control heartbeats, packets in which every field is invalid, and packets that merely have an acceptable length do not cause a source to be selected.
+Usable data means data that arrived within the `Stale` limits and can actually be output under the current `EyePolicy`, `OpennessPolicy` and output toggles. Control heartbeats, packets in which every field is invalid, and packets that merely have an acceptable length do not cause a source to be selected.
 
 Once a source is selected, it stays selected for the rest of the session, even if the other source starts sending data later. The module never combines the two sources, for example eye data from Bridge with expressions from Streaming.
 
@@ -71,6 +68,8 @@ When `AllowFallback` is `true` and the current source is no longer usable while 
 `DisableEyeTracking` and `DisableFaceTracking` are combined with the outputs VRCFT makes available: the module writes only the parts that VRCFT allows and that are not disabled, and never writes channels it does not own. When both are `true`, no receivers are started.
 
 With BridgeSplit, the toggle state is sent to the headset as a subscription request, and the headset sends only the subscribed channels. With the other formats, the toggles affect local output only; the sender continues to send all data.
+
+Eye-only BridgeSplit subscriptions still include Blink and other eye expressions, so eyelid tracking remains available.
 
 ## Bridge
 
@@ -140,13 +139,35 @@ With a complete `HeaderProfile`, a 29765 datagram must meet the length and `trac
 
 ## Eye policy and gain
 
-`EyePolicy` determines where gaze and eye openness come from:
+`EyePolicy` selects the gaze source:
 
-| Value | Gaze | Openness |
-|---|---|---|
-| `NativePreferred` | Native per-eye gaze, then native combined gaze, then gaze derived from the `EyeLook` expressions | Native openness; `1 − EyeBlink` when unavailable |
-| `LegacyNative` | Native gaze only (per-eye or combined), with no fallback to expression-derived gaze | Same as above |
-| `BlendshapeOnly` | Gaze derived from the `EyeLook` expressions only | `1 − EyeBlink` |
+| Value | Gaze |
+|---|---|
+| `NativePreferred` | Native per-eye gaze, then native combined gaze, then gaze derived from the `EyeLook` expressions |
+| `LegacyNative` | Native gaze only (per-eye or combined), with no fallback to expression-derived gaze |
+| `BlendshapeOnly` | Gaze derived from the `EyeLook` expressions only |
+
+`OpennessPolicy` selects each eye's openness. VRCFT computes eyelid closure as `EyeClosed = 1 − Openness`:
+
+| Value | Openness |
+|---|---|
+| `Auto` (default) | Normal mode: `1 − EyeBlink`. Enhanced mode: native Openness first, otherwise `1 − EyeBlink` |
+| `BlendshapeOnly` | Always `1 − EyeBlink` |
+| `NativePreferred` | Always prefer native Openness, otherwise `1 − EyeBlink` |
+
+Default configuration:
+
+```json
+{
+  "ConfigVersion": 1,
+  "EyePolicy": "NativePreferred",
+  "OpennessPolicy": "Auto"
+}
+```
+
+`Auto` identifies enhanced mode from Bridge's mode announcement. When the announcement is missing or expired, it uses Blink. Omitting `OpennessPolicy` from the configuration selects `Auto`.
+
+The hold duration during brief eyelid invalidity is configured under [Stale](#stale).
 
 Native per-eye gaze is used only when the capability is confirmed. For BridgeSplit, the headset must announce enhanced mode with independent per-eye gaze; for DaemonLegacy536, `LegacyPerEyeGaze` must be enabled. In all other cases the combined gaze is used. For how capability announcements are evaluated, see the [protocol reference](protocol.md#bridge-control-and-capability-announcement).
 
@@ -154,7 +175,7 @@ When gaze is derived from expressions, the left eye X axis is `EyeLookIn − Eye
 
 Pupil diameter is handled the same way under all three policies: a valid measured value between 1 and 12 mm is used when present; otherwise `Stale.NeutralPupilMillimeters` is output. The module does not estimate pupil size from openness or other data.
 
-`EyePolicy` also affects source selection in `Auto` mode: eye data that the current policy would not use does not cause its source to be selected.
+With `Source=Auto`, the module uses both policies to determine which eye fields are usable when selecting a source.
 
 The six `EyeGain` fields apply to the gaze X and Y axes and the openness of each eye:
 
@@ -164,6 +185,8 @@ The six `EyeGain` fields apply to the gaze X and Y axes and the openness of each
 | `LeftOpenness`, `RightOpenness` | number | `1` | 0–10 |
 
 Out-of-range or non-finite values fall back to 1. After the gain is applied, gaze is limited to −1 to 1 and openness to 0 to 1. The gain does not apply to pupil diameter, and it may stack with VRCFT's own parameter adjustments.
+
+`LeftOpenness` and `RightOpenness` multiply openness. With a gain above 1, clamping can keep the output fully open during slight closure; keep these at 1 when investigating eyelid response.
 
 ## Stale
 
@@ -175,7 +198,7 @@ Out-of-range or non-finite values fall back to 1. After the gain is applied, gaz
 
 Out-of-range values fall back to the defaults. Ages are measured from the time the PC received the data; sender timestamps are not used.
 
-When expression data has not been updated for longer than `FaceMs`, expression output goes to zero. Gaze and openness expire according to where they came from: values from native eye data use `EyeMs`, and values derived from expressions use `FaceMs`. After expiry, gaze returns to center and openness becomes 1. A measured pupil value that has not been updated within `EyeMs` is replaced by `NeutralPupilMillimeters`. `Auto` mode uses the same two limits to decide whether a source is usable.
+When expression data has not been updated for longer than `FaceMs`, expression output goes to zero. If no new usable gaze or openness value is available, the last valid value is held, with expiry measured from its reception time: native eye values use `EyeMs`, and expression-derived values use `FaceMs`. After expiry, gaze returns to center and openness becomes 1. A measured pupil value that has not been updated within `EyeMs` is replaced by `NeutralPupilMillimeters`. `Source=Auto` uses the same limits to decide whether a source is usable.
 
 The `MissingFrames` state in the log always appears 250 ms after data stops and is not affected by these settings.
 
@@ -241,7 +264,7 @@ After editing a configuration, it can be checked offline with the `validate` com
 
 ## Migrating earlier configurations
 
-The bundled `UnifiedPicoConfigTool` reads one configuration file from an earlier module and generates a new configuration together with a difference report. The source version must be specified explicitly; the tool does not infer it from the file name. The tool does not scan for other files, does not modify the earlier file and does not apply the generated configuration. After reviewing the report, copy the new configuration to `UnifiedPicoModule.json` in the module directory manually and restart VRCFT.
+Use `UnifiedPicoConfigTool` with an earlier configuration file and its source version to generate a new configuration and difference report. Review the report, copy the new configuration to `UnifiedPicoModule.json` in the module directory, and restart VRCFT. The earlier file is preserved.
 
 | Source version | Earlier configuration file | Main resulting settings |
 |---|---|---|
@@ -252,10 +275,12 @@ The bundled `UnifiedPicoConfigTool` reads one configuration file from an earlier
 
 Both Bridge source versions migrate `DisableEyeTracking`, `DisableFaceTracking` and `IP`; pike's `eye-tracking` and `expression-tracking` map to the same two toggles.
 
-The migrated configuration approximates the earlier behavior; it does not reproduce the earlier algorithms exactly. It also differs from a fresh default configuration in the following ways:
+Migration sets `OpennessPolicy=Auto`, selecting openness according to the current module's normal / enhanced mode policy. The difference is recorded in the migration report.
+
+The migrated configuration differs from a fresh default configuration in the following ways:
 
 - Migration does not add the EyeWide ×2 compensation of a fresh installation. `ChannelGain` is enabled only when the earlier configuration contains a valid, enabled gain setting (`ShapeGain`, `scales` or pike's `mode`), and it then uses the migrated gains.
-- SAFT migration pins `StreamingHeader16`, so only port 29765 is opened. `HeaderProfile` stays `null`; no unverified header values are generated.
+- SAFT migration uses `StreamingHeader16`, opening only port 29765, with `HeaderProfile=null`.
 - The `TrackingSettings` thresholds and `BridgeMode` from earlier Bridge configurations are not migrated; they are only recorded in the report.
 
 pike's `mode` is expanded into explicit parameters according to this project's rules; there is no runtime preset:

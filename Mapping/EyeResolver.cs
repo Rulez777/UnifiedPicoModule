@@ -14,6 +14,7 @@ public sealed class EyeResolver(ModuleConfig config)
         public double GazeTime, OpennessTime, PupilTime;
         public int GazeExpiryMs, OpennessExpiryMs;
         public string Origin = "neutral";
+        public string OpennessOrigin = "neutral";
     }
     private EyeState left = new(), right = new();
     public void Reset() { left = new(); right = new(); }
@@ -23,15 +24,16 @@ public sealed class EyeResolver(ModuleConfig config)
         var native = snapshot.Eye is { } e && MonotonicClock.Fresh(e.Arrival, now, config.Stale.EyeMs) ? e : null;
         var face = snapshot.Face is { } f && MonotonicClock.Fresh(f.Arrival, now, config.Stale.FaceMs) ? f : null;
         var independent = IndependentAllowed(snapshot, config);
-        return (ResolveSide(left, native?.Left, native, face, true, independent, now),
-            ResolveSide(right, native?.Right, native, face, false, independent, now));
+        var nativeOpenness = NativeOpennessPreferred(snapshot, config);
+        return (ResolveSide(left, native?.Left, native, face, true, independent, nativeOpenness, now),
+            ResolveSide(right, native?.Right, native, face, false, independent, nativeOpenness, now));
     }
 
     private ResolvedEye ResolveSide(EyeState state, NativeEye? eye, RawEye? frame, RawFace? face,
-        bool isLeft, bool independent, double now)
+        bool isLeft, bool independent, bool nativeOpenness, double now)
     {
-        bool nativePolicy = config.EyePolicy != EyePolicy.BlendshapeOnly;
-        if (nativePolicy && frame is not null && eye is not null)
+        bool nativeGazePolicy = config.EyePolicy != EyePolicy.BlendshapeOnly;
+        if (nativeGazePolicy && frame is not null && eye is not null)
         {
             Vector3? gaze = independent && eye.GazeValid && Finite(eye.Gaze) ? eye.Gaze :
                 frame.CombinedValid && Finite(frame.CombinedGaze) ? frame.CombinedGaze : null;
@@ -45,14 +47,19 @@ public sealed class EyeResolver(ModuleConfig config)
         }
         else if (config.EyePolicy != EyePolicy.LegacyNative) DeriveGaze(state, face, isLeft);
 
-        if (nativePolicy && eye is { OpennessValid: true } && frame is not null && float.IsFinite(eye.Openness))
+        // Eyelid selection is independent of gaze. Auto prefers native openness only in
+        // confirmed enhanced mode; stock valid openness fixed at 1 must not override Blink.
+        if (nativeOpenness && eye is { OpennessValid: true } &&
+            frame is not null && float.IsFinite(eye.Openness))
         {
             state.Openness = eye.Openness; state.OpennessTime = frame.Arrival; state.OpennessExpiryMs = config.Stale.EyeMs;
+            state.OpennessOrigin = "native-openness";
         }
         else if (face is not null && face.Has(isLeft ? PicoShape.EyeBlinkL : PicoShape.EyeBlinkR))
         {
             state.Openness = 1 - face[isLeft ? PicoShape.EyeBlinkL : PicoShape.EyeBlinkR];
             state.OpennessTime = face.Arrival; state.OpennessExpiryMs = config.Stale.FaceMs;
+            state.OpennessOrigin = "blendshape-blink";
         }
 
         // Real measurement validity is independent of openness and gaze. No 0..1 pupil clamp.
@@ -69,7 +76,8 @@ public sealed class EyeResolver(ModuleConfig config)
             gazeFresh ? Safe(state.Gaze.Y * (isLeft ? gain.LeftY : gain.RightY), -1, 1) : 0,
             opennessFresh ? Safe(state.Openness * (isLeft ? gain.LeftOpenness : gain.RightOpenness), 0, 1) : 1,
             pupilFresh ? state.Pupil : config.Stale.NeutralPupilMillimeters,
-            gazeFresh ? state.Origin : "neutral", pupilFresh);
+            gazeFresh ? state.Origin : "neutral", pupilFresh,
+            opennessFresh ? state.OpennessOrigin : "neutral");
     }
 
     private void DeriveGaze(EyeState state, RawFace? face, bool isLeft)
@@ -89,6 +97,9 @@ public sealed class EyeResolver(ModuleConfig config)
     private static bool IndependentAllowed(SourceSnapshot snapshot, ModuleConfig settings) =>
         snapshot.Capabilities is { ModeKnown: true, Enhanced: true, IndependentPerEye: true } ||
         snapshot.Protocol == InputProtocol.DaemonLegacy536 && settings.LegacyPerEyeGaze;
+    private static bool NativeOpennessPreferred(SourceSnapshot snapshot, ModuleConfig settings) =>
+        settings.OpennessPolicy == OpennessPolicy.NativePreferred ||
+        settings.OpennessPolicy == OpennessPolicy.Auto && snapshot.Capabilities is { ModeKnown: true, Enhanced: true };
 
     // Source selection uses the same policy, capability and unit checks as resolution.
     // A valid wire field that this policy ignores must not capture Auto's sticky lock.
@@ -96,12 +107,15 @@ public sealed class EyeResolver(ModuleConfig config)
     {
         if (snapshot.Eye is not { } eye) return false;
         if (HasRealPupil(eye.Left) || HasRealPupil(eye.Right)) return true;
-        if (settings.EyePolicy == EyePolicy.BlendshapeOnly) return false;
-        if (eye.CombinedValid && Finite(eye.CombinedGaze)) return true;
-        if (IndependentAllowed(snapshot, settings) &&
-            (eye.Left.GazeValid && Finite(eye.Left.Gaze) || eye.Right.GazeValid && Finite(eye.Right.Gaze))) return true;
-        return eye.Left.OpennessValid && float.IsFinite(eye.Left.Openness) ||
-            eye.Right.OpennessValid && float.IsFinite(eye.Right.Openness);
+        if (settings.EyePolicy != EyePolicy.BlendshapeOnly)
+        {
+            if (eye.CombinedValid && Finite(eye.CombinedGaze)) return true;
+            if (IndependentAllowed(snapshot, settings) &&
+                (eye.Left.GazeValid && Finite(eye.Left.Gaze) || eye.Right.GazeValid && Finite(eye.Right.Gaze))) return true;
+        }
+        return NativeOpennessPreferred(snapshot, settings) &&
+            (eye.Left.OpennessValid && float.IsFinite(eye.Left.Openness) ||
+                eye.Right.OpennessValid && float.IsFinite(eye.Right.Openness));
     }
     public static bool HasConsumableFace(RawFace face, ModuleConfig settings)
     {

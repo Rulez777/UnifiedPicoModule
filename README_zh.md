@@ -14,18 +14,18 @@ UnifiedPicoModule 是面向 VRCFaceTracking（VRCFT）的 PICO 眼动与面部�
 
 PICO 头显的追踪数据可以通过多种发送端输出，包括 PicoFacialBridge、PICO Connect、Streaming Assistant 以及早期的 PicoFacialDataDaemon。这些发送端使用的数据格式和端口各不相同。本模块支持上述全部格式，能够自动识别当前可用的数据源，并将数据统一输出至 VRCFT，因此无需针对不同的发送端分别安装模块。
 
-> 当前版本为 0.1.1 预览版，基于 VRCFT 5.4.5（net10.0）构建。各使用组合的验证情况请参阅[兼容性](#兼容性)，版本变化见[更新日志](CHANGELOG_zh.md)。
+> 当前版本为 0.1.2 预览版，基于 VRCFT 5.4.5（net10.0）构建。各使用组合的验证情况请参阅[兼容性](#兼容性)，版本变化见[更新日志](CHANGELOG_zh.md)。
 
 ## 支持的发送端
 
 | 发送端 | 端口 | 眼动 | 面部 |
 |---|---|---|---|
-| [PicoFacialBridge](https://github.com/WolalaQAQ/PicoFacialBridge) 0.3.0 及以上 | 9030 | 原生视线与睁眼度；增强模式下额外提供分眼视线与瞳孔直径 | 支持 |
+| [PicoFacialBridge](https://github.com/WolalaQAQ/PicoFacialBridge) 0.3.0 及以上 | 9030 | 原生视线与闭眼数据；增强模式支持分眼视线与瞳孔直径 | 支持 |
 | PICO Connect（legacy 面捕协议） | 29765 | 无原生眼动，视线由眼部表情推算 | 支持 |
 | 无头串流格式（如 Streaming Assistant） | 29763 | 无原生眼动，视线由眼部表情推算 | 支持 |
 | PicoFacialDataDaemon（536 字节格式） | 9030 | 合并视线 | 支持 |
 
-推荐使用 PicoFacialBridge。在上述发送端中，只有它能提供原生视线数据，而且它只发送 PC 端订阅的通道。如果已经在使用 PICO Connect 串流，本模块可以直接接收 29765 端口的面捕数据，但视线需要由 `EyeLook` 系列表情推算，精度低于原生视线。
+推荐使用 PicoFacialBridge，它提供原生视线，并只发送 PC 端订阅的通道。如果已经在使用 PICO Connect 串流，本模块也可以直接接收 29765 端口的面捕数据，视线由 `EyeLook` 系列表情推算。
 
 ## 安装
 
@@ -68,11 +68,15 @@ PICO 头显的追踪数据可以通过多种发送端输出，包括 PicoFacialB
 | `Bridge.IP` | `null` | 指定头显的 IPv4 地址，适用于自动发现失败或局域网内存在多台头显的情况。该地址可以在 PicoFacialBridge 界面中查看 |
 | `Source` | `Auto` | 数据源选择方式。可选 `Auto`、`Bridge` 或 `Streaming` |
 | `DisableEyeTracking` / `DisableFaceTracking` | `false` | 分别禁用眼动或面部输出。使用 Bridge 时，头显会同步停止发送对应通道 |
+| `EyePolicy` | `NativePreferred` | 视线来源，默认优先使用原生视线 |
+| `OpennessPolicy` | `Auto` | 睁眼度来源：普通模式取 `1 - EyeBlink`，增强模式优先使用原生 Openness，无效时回退 Blink |
 | `EyeGain` | 均为 `1` | 分别设置左右眼视线 X、Y 轴与睁眼度的增益 |
 | `AllowFallback` | `false` | 当前数据源不可用时，是否切换到另一数据源 |
 | `Streaming.LocalOnly` | `true` | 仅接受本机发出的串流数据。PICO Connect 在本机运行，通常无需修改 |
 
 完整的字段说明、取值范围和默认值请参阅[配置说明](docs/configuration_zh.md)。
+
+只开启眼动时，Bridge 也会发送 Blink 数据，无需开启面部输出。
 
 ### 数据源选择
 
@@ -88,7 +92,7 @@ PICO 头显的追踪数据可以通过多种发送端输出，包括 PicoFacialB
 
 ```
 Bridge/BridgeSplit: state=Connected ... selected=True E/morphology=90.0/24.0Hz ... enhance=True independent=True drops=0
-Eye origin L/R=native-per-eye/native-per-eye; pupil L/R=measured/measured
+Eye origin L/R=native-per-eye/native-per-eye; openness L/R=native-openness/native-openness; pupil L/R=measured/measured
 ```
 
 主要字段的含义如下：
@@ -99,11 +103,12 @@ Eye origin L/R=native-per-eye/native-per-eye; pupil L/R=measured/measured
 | `selected` | 该数据源是否为当前选用的数据源 |
 | `E/morphology` | 眼动数据与表情数据的接收频率 |
 | `Eye origin` | 视线来源。`native-per-eye`：分眼原生视线。`native-combined`：合并原生视线。`blendshape-derived`：由表情推算。`neutral`：当前无可用数据 |
+| `openness` | 睁眼度来源。`blendshape-blink`：面捕 Blink。`native-openness`：原生睁眼度。`neutral`：已过期或无有效值 |
 | `pupil` | `measured` 为实测瞳孔直径；`estimated` 表示使用默认值 3.5 mm |
 
 使用 PICO Connect 时，日志中显示的数据源为 `Streaming/StreamingHeader16`，视线来源为 `blendshape-derived`，这属于正常现象。
 
-追踪数据中断超过 250 ms 时，对应的输出会恢复为中性状态：表情归零，视线回正，眼睛保持睁开。
+闭眼数据短暂失效时，模块保持最近有效的睁眼度。默认距最近有效闭眼数据超过 250 ms 后恢复睁眼。过期的视线回正，表情归零。
 
 ## 表情后处理
 
@@ -181,16 +186,7 @@ Eye origin L/R=native-per-eye/native-per-eye; pupil L/R=measured/measured
 | PicoFacialBridge 0.3.0（BridgeSplit，增强模式） | 通道订阅、眼动与面部开关的四种组合、数据中断后恢复中性、应用重启后自动恢复，以及 Avatar 表情跟随 |
 | PICO Connect 10.6.6（`faceTrackingTransferProtocol=2`，29765 端口） | 面部数据约 72 Hz，无丢包，Avatar 跟随正常 |
 
-以下组合尚未验证：
-
-- 29763 无头格式与 Streaming Assistant；
-- 其他版本的 PICO Connect；
-- PicoFacialDataDaemon（536 字节格式）；
-- PicoFacialBridge 普通模式；
-- 头显整机重启后的恢复；
-- 长时间运行的稳定性。
-
-如果您在上述组合下进行了测试，欢迎通过 issue 附上日志并反馈结果。
+如果您使用其他发送端或版本，欢迎通过 issue 附上日志并反馈结果。
 
 ## 网络安全与隐私
 

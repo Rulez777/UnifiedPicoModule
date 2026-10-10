@@ -2,6 +2,19 @@
 
 English | [简体中文](CHANGELOG_zh.md)
 
+## [0.1.2] - 2026-10-10
+
+### Fixed
+- Use EyeBlink for eyelid closure in normal mode, fixing partial closure being overridden by native Openness fixed at 1.
+
+### Added
+- Add `OpennessPolicy`, defaulting to `Auto`: normal mode uses Blink, while enhanced mode prefers native Openness with Blink fallback. Select `BlendshapeOnly` or `NativePreferred` for a fixed eyelid source policy; gaze remains configured by `EyePolicy`.
+- Log the openness source and support independent eyelid policy in automatic source selection and configuration migration.
+
+### Validation
+- Module and ConfigTool Release builds pass with no warnings or errors; the default and example configurations pass validation.
+- Headset revalidation is pending.
+
 ## [0.1.1] - 2026-10-03
 
 ### Fixed

@@ -17,6 +17,7 @@ public static class ConfigValidator
         { log($"ConfigVersion={config.ConfigVersion} 未知；使用安全默认。"); config = new ModuleConfig(); }
         if (!Enum.IsDefined(config.Source)) { log($"Source={config.Source} 未知；使用 Auto。"); config.Source = SourceSelection.Auto; }
         if (!Enum.IsDefined(config.EyePolicy)) { log($"EyePolicy={config.EyePolicy} 未知；使用 NativePreferred。"); config.EyePolicy = EyePolicy.NativePreferred; }
+        if (!Enum.IsDefined(config.OpennessPolicy)) { log($"OpennessPolicy={config.OpennessPolicy} 未知；使用 Auto。"); config.OpennessPolicy = OpennessPolicy.Auto; }
         config.Bridge ??= new(); config.Streaming ??= new(); config.Stale ??= new(); config.EyeGain ??= new(); config.PostProcessing ??= new();
         config.Bridge.IP = Address(config.Bridge.IP, null, "Bridge.IP", log);
         config.Streaming.IP = Address(config.Streaming.IP, null, "Streaming.IP", log);

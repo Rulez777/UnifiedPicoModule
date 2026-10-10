@@ -2,6 +2,19 @@
 
 [English](CHANGELOG.md) | 简体中文
 
+## [0.1.2] - 2026-10-10
+
+### 修复
+- 普通模式改用 EyeBlink 控制闭眼，修复原生 Openness 固定为 1 时覆盖半闭眼输出的问题。
+
+### 新增
+- 新增 `OpennessPolicy`，默认 `Auto`：普通模式使用 Blink，增强模式优先原生 Openness，无效时回退 Blink。可选择 `BlendshapeOnly` 或 `NativePreferred` 固定闭眼来源策略，视线仍由 `EyePolicy` 配置。
+- 日志增加睁眼度来源；自动选源和配置迁移支持独立的闭眼策略。
+
+### 验证
+- 模块与 ConfigTool 的 Release 构建通过，无警告、无错误；默认配置与示例配置通过校验。
+- 待头显真机复测。
+
 ## [0.1.1] - 2026-10-03
 
 ### 修复

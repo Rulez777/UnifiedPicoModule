@@ -24,10 +24,6 @@
 
 个人配置和迁移报告可能包含 IP 地址或本机路径，分享前请参阅[隐私与网络安全](privacy_zh.md)。
 
-## 验证状态
-
-2026-10-01，BridgeSplit 完成了第一轮实机验收；同日，PICO Connect 10.6.6（`faceTrackingTransferProtocol=2`）通过 29765 端口完成验收，实测数据报为 912 字节。严格 `HeaderProfile` 模式、29763 无头格式、其他发送端或版本、PicoFacialDataDaemon 536 字节格式、Bridge 普通模式、头显整机重启后的恢复以及长时间稳定性尚未验证。后处理系数与迁移生成的系数均未经实机标定，只是初始值，不代表推荐参数。下文的字段说明不再逐项重复这些限制。
-
 ## 顶层字段
 
 | 字段 | 类型 | 默认值 | 取值 | 说明 |
@@ -38,7 +34,8 @@
 | `DisableFaceTracking` | 布尔 | `false` | | 禁用面部表情输出 |
 | `Bridge` | 对象 | 见 [Bridge](#bridge) | | PicoFacialBridge 与 PicoFacialDataDaemon 的接收设置（9030 端口） |
 | `Streaming` | 对象 | 见 [Streaming](#streaming) | | 串流格式的接收设置（29765、29763 端口） |
-| `EyePolicy` | 枚举 | `NativePreferred` | `NativePreferred`、`LegacyNative`、`BlendshapeOnly` | 视线与睁眼度的来源策略，见[眼动策略与增益](#眼动策略与增益) |
+| `EyePolicy` | 枚举 | `NativePreferred` | `NativePreferred`、`LegacyNative`、`BlendshapeOnly` | 视线来源策略，见[眼动策略与增益](#眼动策略与增益) |
+| `OpennessPolicy` | 枚举 | `Auto` | `Auto`、`BlendshapeOnly`、`NativePreferred` | 睁眼度来源策略，见[眼动策略与增益](#眼动策略与增益) |
 | `EyeGain` | 对象 | 各项均为 `1` | | 左右眼视线与睁眼度的增益 |
 | `Stale` | 对象 | 见 [Stale](#stale) | | 数据过期判定与中性瞳孔值 |
 | `AllowFallback` | 布尔 | `false` | | 当前数据源不可用时是否整体切换到另一数据源 |
@@ -60,7 +57,7 @@
 | `Bridge` | 仅 Bridge | 固定使用 Bridge |
 | `Streaming` | 仅 Streaming | 固定使用 Streaming，不等待 |
 
-可用数据是指在 `Stale` 时限内到达、并且在当前 `EyePolicy` 和开关设置下能实际输出的数据。控制心跳、所有字段都无效的数据包，以及仅长度符合要求的数据包，都不会使数据源被选中。
+可用数据是指在 `Stale` 时限内到达、并且在当前 `EyePolicy`、`OpennessPolicy` 和开关设置下能实际输出的数据。控制心跳、所有字段都无效的数据包，以及仅长度符合要求的数据包，都不会使数据源被选中。
 
 数据源一经选定，在本次运行期间保持不变，即使另一方随后开始发送数据也不会切换。模块不会同时使用两个数据源，例如眼动取自 Bridge、表情取自 Streaming。
 
@@ -71,6 +68,8 @@
 `DisableEyeTracking` 与 `DisableFaceTracking` 会与 VRCFT 提供的可用通道取交集：只有 VRCFT 允许且未被禁用的部分才由本模块输出，模块不会写入不属于自己的通道。两者都为 `true` 时，模块不启动任何接收器。
 
 使用 BridgeSplit 时，模块会把开关状态作为订阅请求发给头显，头显只发送被订阅的通道。使用其他格式时，开关只影响本地输出，发送端仍会发送完整数据。
+
+只开启眼动时，BridgeSplit 仍会发送 Blink 等眼周表情，闭眼追踪可以正常使用。
 
 ## Bridge
 
@@ -140,13 +139,35 @@ Streaming 接收器处理 PICO Connect 等发送端的串流格式。端口固�
 
 ## 眼动策略与增益
 
-`EyePolicy` 决定视线与睁眼度的来源：
+`EyePolicy` 决定视线来源：
 
-| 取值 | 视线 | 睁眼度 |
-|---|---|---|
-| `NativePreferred` | 依次使用原生分眼视线、原生合并视线、由 `EyeLook` 表情推算的视线 | 原生睁眼度；不可用时为 `1 − EyeBlink` |
-| `LegacyNative` | 仅使用原生视线（分眼或合并），不回退到表情推算 | 同上 |
-| `BlendshapeOnly` | 仅使用由 `EyeLook` 表情推算的视线 | `1 − EyeBlink` |
+| 取值 | 视线 |
+|---|---|
+| `NativePreferred` | 依次使用原生分眼视线、原生合并视线、由 `EyeLook` 表情推算的视线 |
+| `LegacyNative` | 仅使用原生视线（分眼或合并），不回退到表情推算 |
+| `BlendshapeOnly` | 仅使用由 `EyeLook` 表情推算的视线 |
+
+`OpennessPolicy` 决定每眼的睁眼度。VRCFT 以 `EyeClosed = 1 − Openness` 计算闭眼程度：
+
+| 取值 | 睁眼度 |
+|---|---|
+| `Auto`（默认） | 普通模式取 `1 − EyeBlink`；增强模式优先原生 Openness，无效时取 `1 − EyeBlink` |
+| `BlendshapeOnly` | 始终取 `1 − EyeBlink` |
+| `NativePreferred` | 始终优先原生 Openness，无效时取 `1 − EyeBlink` |
+
+默认配置：
+
+```json
+{
+  "ConfigVersion": 1,
+  "EyePolicy": "NativePreferred",
+  "OpennessPolicy": "Auto"
+}
+```
+
+`Auto` 根据 Bridge 的模式公告识别增强模式。未收到公告或公告过期时使用 Blink。配置中省略 `OpennessPolicy` 时采用 `Auto`。
+
+闭眼数据短暂失效时的保持时长由 [Stale](#stale) 设置。
 
 原生分眼视线只在能力已确认时使用：BridgeSplit 需要头显公告增强模式及分眼独立能力，DaemonLegacy536 需要启用 `LegacyPerEyeGaze`。其余情况使用合并视线。能力公告的判定请参阅[协议参考](protocol_zh.md#bridge-控制与能力公告)。
 
@@ -154,7 +175,7 @@ Streaming 接收器处理 PICO Connect 等发送端的串流格式。端口固�
 
 瞳孔直径在三种策略下处理相同：数据中有有效的实测值且在 1–12 mm 内时使用实测值，否则使用 `Stale.NeutralPupilMillimeters`。模块不会根据睁眼度等其他数据估算瞳孔。
 
-`EyePolicy` 也影响 `Auto` 模式的选择：如果某个数据源的眼动数据在当前策略下不会被使用，这部分数据不会使该数据源被选中。
+`Source=Auto` 时，模块按这两种策略判断眼动字段是否可用，并据此选择数据源。
 
 `EyeGain` 的六个字段分别作用于左右眼视线的 X、Y 轴和睁眼度：
 
@@ -164,6 +185,8 @@ Streaming 接收器处理 PICO Connect 等发送端的串流格式。端口固�
 | `LeftOpenness`、`RightOpenness` | 数值 | `1` | 0–10 |
 
 超出范围或非有限值时回退为 1。增益相乘后，视线限制在 −1 到 1，睁眼度限制在 0 到 1。增益不作用于瞳孔直径，也可能与 VRCFT 自身的参数调整叠加。
+
+`LeftOpenness` 与 `RightOpenness` 乘在睁眼度上。增益大于 1 时，限幅可能使轻微闭眼仍输出睁眼状态；排查闭眼响应时建议保持为 1。
 
 ## Stale
 
@@ -175,7 +198,7 @@ Streaming 接收器处理 PICO Connect 等发送端的串流格式。端口固�
 
 越界时回退到默认值。时长以本机收到数据的时间计算，不使用发送端时间戳。
 
-表情数据超过 `FaceMs` 未更新时，表情输出归零。视线与睁眼度分别按其来源计算有效期：来自原生眼动数据的按 `EyeMs`，由表情推算的按 `FaceMs`。过期后视线回正、睁眼度为 1。瞳孔实测值超过 `EyeMs` 未更新时改用 `NeutralPupilMillimeters`。`Auto` 模式判断数据源是否可用时也使用这两个时长。
+表情数据超过 `FaceMs` 未更新时，表情输出归零。视线与睁眼度没有可用新值时，保持最近有效值，期限从该值的接收时间计算：原生眼动值使用 `EyeMs`，表情推算值使用 `FaceMs`。过期后视线回正、睁眼度为 1。瞳孔实测值超过 `EyeMs` 未更新时改用 `NeutralPupilMillimeters`。`Source=Auto` 判断数据源是否可用时也使用这两个时长。
 
 日志中的 `MissingFrames` 状态固定在数据中断 250 ms 后出现，不受本节设置影响。
 
@@ -241,7 +264,7 @@ IP 地址与绑定地址只接受 IPv4 字面量，不支持主机名和 IPv6。
 
 ## 旧配置迁移
 
-随附的 `UnifiedPicoConfigTool` 可以读取一份旧模块的配置文件，生成新配置和差异报告。迁移需要手动指定来源版本，工具不会根据文件名推断。工具不扫描其他文件，不修改旧文件，也不会自动应用生成的配置；核对报告后，需要手动将新配置复制为模块目录下的 `UnifiedPicoModule.json` 并重启 VRCFT。
+使用 `UnifiedPicoConfigTool`，指定旧配置文件和来源版本，可以生成新配置与差异报告。核对报告后，将新配置复制为模块目录下的 `UnifiedPicoModule.json`，再重启 VRCFT。旧配置文件保留。
 
 | 来源版本 | 旧配置文件 | 迁移后的主要设置 |
 |---|---|---|
@@ -252,10 +275,12 @@ IP 地址与绑定地址只接受 IPv4 字面量，不支持主机名和 IPv6。
 
 两种 Bridge 来源都会迁移 `DisableEyeTracking`、`DisableFaceTracking` 和 `IP`；pike 的 `eye-tracking` 与 `expression-tracking` 对应这两个禁用开关。
 
-迁移结果在行为上近似旧模块，不逐项复刻旧算法。迁移时有以下几点与新安装的默认配置不同：
+迁移后的 `OpennessPolicy` 为 `Auto`，按当前模块的普通／增强模式策略选择睁眼度来源，差异记录在迁移报告中。
+
+迁移结果与新安装的默认配置有以下区别：
 
 - 迁移不会加入新安装时的 EyeWide 2 倍补偿。只有旧配置中的增益设置（`ShapeGain`、`scales` 或 pike 的 `mode`）有效且处于启用状态时，`ChannelGain` 才会启用，并使用迁移得到的增益。
-- SAFT 迁移固定为 `StreamingHeader16`，因此只监听 29765 端口；`HeaderProfile` 保持 `null`，不会生成未经证实的头部值。
+- SAFT 迁移使用 `StreamingHeader16`，只监听 29765 端口；`HeaderProfile` 为 `null`。
 - 旧 Bridge 配置中的 `TrackingSettings` 阈值与 `BridgeMode` 不会迁移，只记录在报告中。
 
 pike 的 `mode` 按本项目的规则展开为显式参数，没有运行时预设：

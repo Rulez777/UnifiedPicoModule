@@ -59,6 +59,7 @@ public static class LegacyImporter
     {
         config.Source = SourceSelection.Bridge;
         config.EyePolicy = version == BridgeCurrent ? EyePolicy.NativePreferred : EyePolicy.LegacyNative;
+        report.Add("睁眼度默认使用独立的 OpennessPolicy=Auto：普通或未知模式用 1 - EyeBlink，已确认增强模式优先原生睁眼度；不保留普通模式原生优先。需要固定来源时可显式设为 BlendshapeOnly 或 NativePreferred，不影响视线。");
         config.LegacyPerEyeGaze = version == BridgeUpstream;
         config.LegacyExpressionCeiling = false;
         config.Bridge.Protocol = version == BridgeCurrent ? InputProtocol.BridgeSplit : InputProtocol.DaemonLegacy536;

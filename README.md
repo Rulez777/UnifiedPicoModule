@@ -14,18 +14,18 @@ UnifiedPicoModule is a PICO eye and face tracking module for VRCFaceTracking (VR
 
 Tracking data from a PICO headset can be delivered by several senders, including PicoFacialBridge, PICO Connect, Streaming Assistant and the earlier PicoFacialDataDaemon. Each sender uses its own data format and port. This module supports all of these formats, detects which source is currently available, and forwards its data to VRCFT through a single output, so there is no need to install a separate module for each sender.
 
-> The current release is a 0.1.1 preview, built against VRCFT 5.4.5 (net10.0). See [Compatibility](#compatibility) for which combinations have been verified and the [changelog](CHANGELOG.md) for release changes.
+> The current release is a 0.1.2 preview, built against VRCFT 5.4.5 (net10.0). See [Compatibility](#compatibility) for which combinations have been verified and the [changelog](CHANGELOG.md) for release changes.
 
 ## Supported senders
 
 | Sender | Port | Eye tracking | Face tracking |
 |---|---|---|---|
-| [PicoFacialBridge](https://github.com/WolalaQAQ/PicoFacialBridge) 0.3.0 or later | 9030 | Native gaze and eye openness; enhanced mode additionally provides per-eye gaze and pupil diameter | Supported |
+| [PicoFacialBridge](https://github.com/WolalaQAQ/PicoFacialBridge) 0.3.0 or later | 9030 | Native gaze and eyelid data; enhanced mode supports per-eye gaze and pupil diameter | Supported |
 | PICO Connect (legacy face tracking protocol) | 29765 | No native eye data; gaze is derived from eye expressions | Supported |
 | Headerless streaming format (e.g. Streaming Assistant) | 29763 | No native eye data; gaze is derived from eye expressions | Supported |
 | PicoFacialDataDaemon (536-byte format) | 9030 | Combined gaze | Supported |
 
-PicoFacialBridge is the recommended sender. It is the only one of these that provides native gaze, and it sends only the channels the PC has subscribed to. If you already stream with PICO Connect, the module can receive face tracking directly on port 29765, but gaze must then be derived from the `EyeLook` expressions and is less accurate than native gaze.
+PicoFacialBridge is the recommended sender: it provides native gaze and sends only the channels the PC has subscribed to. If you already stream with PICO Connect, the module can also receive face tracking directly on port 29765, with gaze derived from the `EyeLook` expressions.
 
 ## Installation
 
@@ -68,11 +68,15 @@ If the file does not exist on first start, the module generates a default config
 | `Bridge.IP` | `null` | IPv4 address of the headset. Use this when automatic discovery fails or when more than one headset is on the network. The address is shown in the PicoFacialBridge interface |
 | `Source` | `Auto` | How the data source is selected: `Auto`, `Bridge` or `Streaming` |
 | `DisableEyeTracking` / `DisableFaceTracking` | `false` | Disable eye or face output respectively. With Bridge, the headset also stops sending the corresponding channel |
+| `EyePolicy` | `NativePreferred` | Gaze source; prefers native gaze by default |
+| `OpennessPolicy` | `Auto` | Openness source: normal mode uses `1 - EyeBlink`; enhanced mode prefers native Openness, falling back to Blink when invalid |
 | `EyeGain` | All `1` | Gain for the gaze X and Y axes and eye openness, set separately for each eye |
 | `AllowFallback` | `false` | Whether to switch to the other source when the current one becomes unavailable |
 | `Streaming.LocalOnly` | `true` | Accept streaming data only from the local machine. PICO Connect runs locally, so this normally does not need to be changed |
 
 For the complete list of fields, valid ranges and defaults, see the [configuration reference](docs/configuration.md).
+
+Bridge also sends Blink data when only eye tracking is enabled; face output can remain disabled.
 
 ### Source selection
 
@@ -88,7 +92,7 @@ The module writes a status line to VRCFT's Output page every 5 seconds. A normal
 
 ```
 Bridge/BridgeSplit: state=Connected ... selected=True E/morphology=90.0/24.0Hz ... enhance=True independent=True drops=0
-Eye origin L/R=native-per-eye/native-per-eye; pupil L/R=measured/measured
+Eye origin L/R=native-per-eye/native-per-eye; openness L/R=native-openness/native-openness; pupil L/R=measured/measured
 ```
 
 The main fields are:
@@ -99,11 +103,12 @@ The main fields are:
 | `selected` | Whether this is the source currently in use |
 | `E/morphology` | Receive rates of eye data and expression data |
 | `Eye origin` | Where gaze comes from. `native-per-eye`: native per-eye gaze. `native-combined`: native combined gaze. `blendshape-derived`: derived from expressions. `neutral`: no usable data at the moment |
+| `openness` | Where openness comes from. `blendshape-blink`: face-tracking Blink. `native-openness`: native openness. `neutral`: expired or no valid value |
 | `pupil` | `measured` is a measured pupil diameter; `estimated` means the default of 3.5 mm is used |
 
 With PICO Connect, the log shows the source as `Streaming/StreamingHeader16` and the gaze origin as `blendshape-derived`. This is expected.
 
-When tracking data stops for more than 250 ms, the affected outputs return to a neutral state: expressions go to zero, gaze returns to center, and the eyes stay open.
+When eyelid data briefly becomes invalid, the module holds the last valid openness. By default, the eyes return to open when the last valid eyelid sample is older than 250 ms. Expired gaze returns to center and expressions go to zero.
 
 ## Expression post-processing
 
@@ -181,16 +186,7 @@ As of 2026-10-02, the following combinations have been verified on a PICO 4 Pro:
 | PicoFacialBridge 0.3.0 (BridgeSplit, enhanced mode) | Channel subscription, all four combinations of the eye and face toggles, return to neutral when data stops, automatic recovery after an application restart, and avatar expression tracking |
 | PICO Connect 10.6.6 (`faceTrackingTransferProtocol=2`, port 29765) | Face data at about 72 Hz with no packet loss; avatar tracking works as expected |
 
-The following have not been verified:
-
-- the 29763 headerless format and Streaming Assistant;
-- other versions of PICO Connect;
-- PicoFacialDataDaemon (536-byte format);
-- PicoFacialBridge normal mode;
-- recovery after a full headset reboot;
-- long-term stability.
-
-If you have tested any of these combinations, please open an issue with your log and results.
+If you use another sender or version, please open an issue with your log and results.
 
 ## Network security and privacy
 

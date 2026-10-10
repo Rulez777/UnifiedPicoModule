@@ -124,9 +124,9 @@ The protocol is locked for the session. If `Bridge.Protocol` is set, other forma
 
 When the Bridge application restarts, it forgets the locked endpoint and sends nothing until it receives a new discovery request. The PC side can only rediscover after `ControlTimeoutMs` expires, so the recovery time depends mainly on this timeout. In the application restart test on 2026-10-01, the headset UI returned to the running state in about 6 seconds, and the PC side re-subscribed after about 33 seconds.
 
-The epoch is based on the headset's monotonic uptime and may decrease after a full reboot. The normal recovery path goes through the timeout and rediscovery first, by which point the recorded epoch has been cleared. The lower-epoch handling in the table above is a defensive measure only.
+The epoch is based on the headset's monotonic uptime and may decrease after a full reboot. The normal recovery path goes through the timeout and rediscovery first, by which point the recorded epoch has been cleared. Lower epochs received within a subscribed session are handled as shown in the table above.
 
-Sending `STOP` is subject to the shutdown sequence. If the state lock cannot be acquired within 200 ms during shutdown, the module closes its sockets directly and `STOP` is not guaranteed to be sent.
+`STOP` is sent during shutdown. If the state lock cannot be acquired within 200 ms, the module closes its sockets directly.
 
 ## BridgeSplit packet formats
 
@@ -247,7 +247,7 @@ The streaming formats contain no native eye data. Gaze and eye openness are deri
 
 Body field offsets within the datagram are shifted by 16: the face timestamp is at 16 and the shapes start at 24. The transport timestamp in the header is not used as the face clock.
 
-The first 8 header bytes measured from PICO Connect 10.6.6 are `00 33 02 01 00 01 01 00`, followed by an 8-byte timestamp. This document has no header data from other senders and does not infer their values.
+The first 8 header bytes measured from PICO Connect 10.6.6 are `00 33 02 01 00 01 01 00`, followed by an 8-byte timestamp.
 
 ### Receive rules
 
@@ -280,17 +280,29 @@ These apply to the `E` datagram of `BridgeSplit` and to the eye section of `Daem
 | `0x100` | Per eye | Per-eye gaze valid | All three vector components are finite |
 | `0x800` | Per eye | Pupil diameter valid | Raw value divided by 10 gives millimeters; the result is positive and finite |
 
-Gaze uses only the X and Y components of the vector, without normalization. The status bits and unit conversion follow existing module data models; this project has not calibrated the sensors.
+Gaze takes the vector's X and Y components directly, without normalization.
 
 ### Eye policy
 
-`EyePolicy` determines where gaze and openness come from:
+`EyePolicy` selects the gaze source:
 
-| Policy | Gaze | Openness |
+| Policy | Gaze |
+|---|---|
+| `NativePreferred` (default) | Native gaze first; derived from shapes when native gaze is unavailable |
+| `LegacyNative` | Native gaze only, never derived |
+| `BlendshapeOnly` | Derived from shapes only |
+
+`OpennessPolicy` selects the openness source:
+
+| Policy | Openness | Origin |
 |---|---|---|
-| `NativePreferred` (default) | Native gaze first; derived from shapes when native gaze is unavailable | Native openness first, otherwise `1 - EyeBlink` |
-| `LegacyNative` | Native gaze only, never derived | Native openness first, otherwise `1 - EyeBlink` |
-| `BlendshapeOnly` | Derived from shapes only | `1 - EyeBlink` only |
+| `Auto` (default) | Normal mode: `1 - EyeBlink`. Enhanced mode: native Openness first, otherwise `1 - EyeBlink` | `native-openness` or `blendshape-blink` |
+| `BlendshapeOnly` | Always `1 - EyeBlink` | `blendshape-blink` |
+| `NativePreferred` | Always prefer native Openness, otherwise `1 - EyeBlink` | `native-openness` or `blendshape-blink` |
+
+`Auto` uses the enhanced-mode policy when the mode announcement is current and the internal capability state has `ModeKnown=true` and `Enhanced=true`; otherwise it uses Blink. Native values and Blink are checked against their respective validity bits and reception ages.
+
+VRCFT outputs eyelid closure as `EyeClosed = 1 - Openness`. Gaze and openness origins are logged separately; for holding and output after invalidity, see [Timestamps, expiry and neutral output](#timestamps-expiry-and-neutral-output).
 
 When native gaze is available, it is chosen in the following order: if the per-eye conditions are met and that eye's gaze is valid, the per-eye gaze is used and the origin is `native-per-eye`; otherwise the combined gaze is used and the origin is `native-combined`.
 
@@ -322,6 +334,8 @@ Timestamp rules:
 
 Eye and face data arrive, are deduplicated and expire independently. The module does not interpolate or synthesize samples. A new eye sample does not cause cached expressions to be processed again.
 
+When no new usable gaze or openness value is available, the last valid value is held until its source expiry limit in the table below.
+
 Output after expiry:
 
 | Data | Expiry threshold | Output after expiry |
@@ -341,7 +355,7 @@ Expression shapes are mapped to VRCFT expression channels through a fixed table,
 
 A source in the `Faulted` or `Stopped` state is not usable. Any other source is usable when one of the following holds:
 
-- eye tracking is not disabled, and fresh native eye data contains fields usable under the current policy: a valid pupil, combined gaze, per-eye gaze that meets the per-eye conditions, or openness. Under `BlendshapeOnly`, only the pupil counts;
+- eye tracking is enabled, native eye data is within its expiry limit, and it contains a valid pupil or gaze / openness fields allowed by `EyePolicy` and `OpennessPolicy`;
 - fresh shape data contains mappable expressions, or, with eye tracking enabled, can be used to derive openness or gaze.
 
 In `Auto` mode, only Bridge can be selected during the first `AutoSelectionWindowMs` (1500 ms by default) after startup. After that, the first source to become usable is selected. When Bridge and streaming are both usable, Bridge is preferred.

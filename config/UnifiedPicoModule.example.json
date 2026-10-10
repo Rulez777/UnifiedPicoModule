@@ -19,6 +19,7 @@
     "HeaderProfile": null
   },
   "EyePolicy": "NativePreferred",
+  "OpennessPolicy": "Auto",
   "EyeGain": {
     "LeftX": 1,
     "LeftY": 1,
