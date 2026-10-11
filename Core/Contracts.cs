@@ -89,7 +89,8 @@ public sealed record CapabilitySnapshot(bool ModeKnown = false, bool Enhanced = 
     bool IndependentPerEye = false, string Plugin = "off");
 public sealed record SourceSnapshot(SourceKind Source, long Generation, InputProtocol? Protocol,
     ConnectionState State, CapabilitySnapshot Capabilities, RawEye? Eye, long EyeSequence,
-    RawFace? Face, long FaceSequence, double LastControl, long DroppedPackets, string Detail)
+    RawFace? Face, long FaceSequence, double LastControl, long DroppedPackets, string Detail,
+    long OutputGeneration = 0)
 {
     public static SourceSnapshot Empty(SourceKind kind) => new(kind, 0, null, ConnectionState.Searching,
         new(), null, 0, null, 0, 0, 0, "Waiting for validated input");

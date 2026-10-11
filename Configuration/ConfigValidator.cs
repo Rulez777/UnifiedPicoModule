@@ -19,6 +19,9 @@ public static class ConfigValidator
         if (!Enum.IsDefined(config.EyePolicy)) { log($"EyePolicy={config.EyePolicy} 未知；使用 NativePreferred。"); config.EyePolicy = EyePolicy.NativePreferred; }
         if (!Enum.IsDefined(config.OpennessPolicy)) { log($"OpennessPolicy={config.OpennessPolicy} 未知；使用 Auto。"); config.OpennessPolicy = OpennessPolicy.Auto; }
         config.Bridge ??= new(); config.Streaming ??= new(); config.Stale ??= new(); config.EyeGain ??= new(); config.PostProcessing ??= new();
+        config.GazeSmoothing ??= new();
+        if (!ValidateGazeSmoothing(config.GazeSmoothing, log))
+        { config.GazeSmoothing = new() { Enabled = false }; log("GazeSmoothing 非法；回退默认参数并关闭视线平滑。"); }
         config.Bridge.IP = Address(config.Bridge.IP, null, "Bridge.IP", log);
         config.Streaming.IP = Address(config.Streaming.IP, null, "Streaming.IP", log);
         config.Bridge.ListenAddress = Address(config.Bridge.ListenAddress, "0.0.0.0", "Bridge.ListenAddress", log)!;
@@ -64,6 +67,36 @@ public static class ConfigValidator
     }
 
     internal static void Disable(object rule) => rule.GetType().GetProperty("Enabled")?.SetValue(rule, false);
+
+    private static bool ValidateGazeSmoothing(GazeSmoothingSettings settings, Action<string> log)
+    {
+        var valid = true;
+        void Error(string name, string reason) { log($"GazeSmoothing.{name}：{reason}"); valid = false; }
+        foreach (var property in typeof(GazeSmoothingSettings).GetProperties())
+        {
+            if (property.Name == "Enabled") continue;
+            var configured = property.GetValue(settings);
+            if (configured is null && Nullable.GetUnderlyingType(property.PropertyType) is not null) continue;
+            var value = Convert.ToDouble(configured, CultureInfo.InvariantCulture);
+            var (min, max) = property.Name switch
+            {
+                "LightCutoffHz" or "DualLightCutoffHz" or "HeavyCutoffHz" or "DerivativeCutoffHz" => (0.01d, 1000d),
+                "Beta" or "DualBeta" => (0d, 100d),
+                "LidConfirmMs" => (0d, 2000d),
+                "LidSmoothingMs" => (0d, 5000d),
+                "ResetGapMs" => (1d, 5000d),
+                _ => (0d, 1d)
+            };
+            if (!double.IsFinite(value) || value < min || value > max)
+                Error(property.Name, $"值 {value} 非有限或超出 {min}–{max}。");
+        }
+        if (settings.HeavyCutoffHz > settings.LightCutoffHz) Error("HeavyCutoffHz", "必须 ≤LightCutoffHz。");
+        if (settings.DualLightCutoffHz is { } dualLight && settings.HeavyCutoffHz > dualLight)
+            Error("DualLightCutoffHz", "必须 ≥HeavyCutoffHz。");
+        if (settings.BlinkLow >= settings.BlinkHigh) Error("BlinkHigh", "必须 >BlinkLow。");
+        if (settings.OpennessLow >= settings.OpennessHigh) Error("OpennessHigh", "必须 >OpennessLow。");
+        return valid;
+    }
 
     private static bool ValidateRule(object rule, string path, Action<string> log)
     {

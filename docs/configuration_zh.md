@@ -37,6 +37,7 @@
 | `EyePolicy` | 枚举 | `NativePreferred` | `NativePreferred`、`LegacyNative`、`BlendshapeOnly` | 视线来源策略，见[眼动策略与增益](#眼动策略与增益) |
 | `OpennessPolicy` | 枚举 | `Auto` | `Auto`、`BlendshapeOnly`、`NativePreferred` | 睁眼度来源策略，见[眼动策略与增益](#眼动策略与增益) |
 | `EyeGain` | 对象 | 各项均为 `1` | | 左右眼视线与睁眼度的增益 |
+| `GazeSmoothing` | 对象 | 开启，按模式使用默认参数 | | 眼睑自适应原生视线平滑，见[视线平滑](#视线平滑) |
 | `Stale` | 对象 | 见 [Stale](#stale) | | 数据过期判定与中性瞳孔值 |
 | `AllowFallback` | 布尔 | `false` | | 当前数据源不可用时是否整体切换到另一数据源 |
 | `AutoSelectionWindowMs` | 整数 | `1500` | 100–60000 | `Auto` 模式下启动后优先等待 Bridge 的时长（ms） |
@@ -89,7 +90,7 @@ Bridge 接收器在 9030 端口接收 PicoFacialBridge（BridgeSplit）和 PicoF
 
 `ReconnectMs` 同时决定发现应答的有效窗口：发出发现请求后，在该时长（至少 1 秒）内收到的应答才会被接受。
 
-`ControlTimeoutMs` 用于判断对端是否已离线。超时后，模块放弃当前对端并重新发现，不向对端发送停止指令。它与数据过期判定（`Stale`）无关：数据中断 250 ms 后连接状态即显示为 `MissingFrames`，输出按 `Stale` 回到中性，但只要控制包仍在到达，连接就不会被放弃。BridgeSplit 的模式公告在 `ControlTimeoutMs` 与 20 秒中较短的时间内未刷新时，模块会撤销已确认的增强能力。
+`ControlTimeoutMs` 用于判断对端是否已离线。超时后，模块放弃当前对端并重新发现，不向对端发送停止指令。它与数据过期判定（`Stale`）无关：数据中断 250 ms 后连接状态即显示为 `MissingFrames`，但只要控制包仍在到达，连接就不会被放弃。BridgeSplit 的模式公告在 `ControlTimeoutMs` 与 20 秒中较短的时间内未刷新时，模块会撤销已确认的增强能力。这些超时默认保留输出；设置 `Stale.NeutralizeOnTimeout=true` 后才恢复中性。
 
 `Protocol` 为 `BridgeSplit` 时，只接受与订阅确认相符的分流数据包；为 `DaemonLegacy536` 时，模块不发送订阅请求，只接受 536 字节数据包。各格式的结构请参阅[协议参考](protocol_zh.md)。
 
@@ -143,7 +144,7 @@ Streaming 接收器处理 PICO Connect 等发送端的串流格式。端口固�
 
 | 取值 | 视线 |
 |---|---|
-| `NativePreferred` | 依次使用原生分眼视线、原生合并视线、由 `EyeLook` 表情推算的视线 |
+| `NativePreferred` | 按协议固定来源：Bridge 使用原生视线，串流格式使用 `EyeLook` 表情推算 |
 | `LegacyNative` | 仅使用原生视线（分眼或合并），不回退到表情推算 |
 | `BlendshapeOnly` | 仅使用由 `EyeLook` 表情推算的视线 |
 
@@ -151,9 +152,9 @@ Streaming 接收器处理 PICO Connect 等发送端的串流格式。端口固�
 
 | 取值 | 睁眼度 |
 |---|---|
-| `Auto`（默认） | 普通模式取 `1 − EyeBlink`；增强模式优先原生 Openness，无效时取 `1 − EyeBlink` |
+| `Auto`（默认） | 普通模式只取 `1 − EyeBlink`；已确认增强模式只取本眼原生 Openness |
 | `BlendshapeOnly` | 始终取 `1 − EyeBlink` |
-| `NativePreferred` | 始终优先原生 Openness，无效时取 `1 − EyeBlink` |
+| `NativePreferred` | 本眼原生 Openness |
 
 默认配置：
 
@@ -167,13 +168,13 @@ Streaming 接收器处理 PICO Connect 等发送端的串流格式。端口固�
 
 `Auto` 根据 Bridge 的模式公告识别增强模式。未收到公告或公告过期时使用 Blink。配置中省略 `OpennessPolicy` 时采用 `Auto`。
 
-闭眼数据短暂失效时的保持时长由 [Stale](#stale) 设置。
+选定来源缺帧、过期或无效时不临时换源，默认保持本眼最近有效睁眼度；尚无有效值时为 1。可选的超时中性化由 [Stale](#stale) 设置。
 
-原生分眼视线只在能力已确认时使用：BridgeSplit 需要头显公告增强模式及分眼独立能力，DaemonLegacy536 需要启用 `LegacyPerEyeGaze`。其余情况使用合并视线。能力公告的判定请参阅[协议参考](protocol_zh.md#bridge-控制与能力公告)。
+原生视线按能力固定来源：BridgeSplit 在头显公告增强模式及分眼独立能力时使用本眼视线；DaemonLegacy536 启用 `LegacyPerEyeGaze` 时同样使用本眼视线。其余情况使用合并视线。选定来源失效时不切换，保持与回正时限由 [Stale](#stale) 设置。能力公告的判定请参阅[协议参考](protocol_zh.md#bridge-控制与能力公告)。
 
 由表情推算视线时，左眼 X 为 `EyeLookIn − EyeLookOut`，右眼 X 为 `EyeLookOut − EyeLookIn`，双眼 Y 均为 `EyeLookUp − EyeLookDown`。这只是由表情差值得到的近似，不包含辐辏信息。
 
-瞳孔直径在三种策略下处理相同：数据中有有效的实测值且在 1–12 mm 内时使用实测值，否则使用 `Stale.NeutralPupilMillimeters`。模块不会根据睁眼度等其他数据估算瞳孔。
+瞳孔直径在三种策略下处理相同：数据中有有效的实测值且在 1–12 mm 内时使用实测值，失效时默认保持。尚无实测值、输出重置后，或启用超时中性化且测量已过期时，使用 `Stale.NeutralPupilMillimeters`。模块不会根据睁眼度等其他数据估算瞳孔。
 
 `Source=Auto` 时，模块按这两种策略判断眼动字段是否可用，并据此选择数据源。
 
@@ -188,17 +189,66 @@ Streaming 接收器处理 PICO Connect 等发送端的串流格式。端口固�
 
 `LeftOpenness` 与 `RightOpenness` 乘在睁眼度上。增益大于 1 时，限幅可能使轻微闭眼仍输出睁眼状态；排查闭眼响应时建议保持为 1。
 
+## 视线平滑
+
+`GazeSmoothing.Enabled` 默认为 `true`，省略整个配置节时也启用下表的按模式默认参数。需要关闭时，在配置根对象加入 `"GazeSmoothing": { "Enabled": false }`。显式保存的旧值保持优先；省略的字段采用本版默认值。配置修改在模块下次初始化时生效。
+
+要恢复本节的全部默认值，先备份配置，再删除 `GazeSmoothing` 节并重启 VRCFT。
+
+滤波器在 `EyeGain` 之前分别处理左右眼的原生 gaze XY，根据眼睑状态连续调整平滑强度：睁眼时保留更多细小变化，半睁时加强抑抖。滤波越强，转眼跟随通常越慢。表情推算视线沿用原有输出路径；此节参数只控制 gaze，眼睑输出由 `OpennessPolicy` 控制。默认参数的验证情况见 [README 的兼容性说明](../README_zh.md#兼容性)。
+
+| 字段 | 类型 | 默认值 | 取值 | 含义 |
+|---|---|---|---|---|
+| `Enabled` | 布尔 | `true` | `true` / `false` | 是否启用平滑 |
+| `LightCutoffHz` | 数值 | `100` | 0.01–1000 | 眼睑权重为 0 时的最低截止频率；越大越跟手 |
+| `HeavyCutoffHz` | 数值 | `4` | 0.01–1000，≤ `LightCutoffHz` | 权重为 1 时的最低截止频率；越小平滑越强 |
+| `Beta` | 数值 | `1` | 0–100 | 按平滑后的 XY 导数范数提高截止频率的系数 |
+| `DualLightCutoffHz` | 数值或 `null` | `250` | 0.01–1000，≥ `HeavyCutoffHz` | dual 逐眼视线轻档；省略时使用 250，显式 `null` 时继承 `LightCutoffHz` |
+| `DualBeta` | 数值或 `null` | `8` | 0–100 | dual 逐眼视线速度系数；省略时使用 8，显式 `null` 时继承 `Beta` |
+| `DerivativeCutoffHz` | 数值 | `1` | 0.01–1000 | 输入导数的平滑截止频率 |
+| `BlinkLow` | 数值 | `0.30` | 0–1，< `BlinkHigh` | 合并视线：权重为 0 的平滑 Blink 值 |
+| `BlinkHigh` | 数值 | `0.60` | 0–1，> `BlinkLow` | 合并视线：权重为 1 的平滑 Blink 值 |
+| `OpennessHigh` | 数值 | `0.80` | 0–1，> `OpennessLow` | 分眼视线：权重为 0 的平滑睁眼度 |
+| `OpennessLow` | 数值 | `0.45` | 0–1，< `OpennessHigh` | 分眼视线：权重为 1 的平滑睁眼度 |
+| `LidConfirmMs` | 整数 | `350` | 0–2000 | 确认眼睑闭合程度的滚动源时间窗口；0 表示关闭确认 |
+| `LidSmoothingMs` | 整数 | `150` | 0–5000 | 确认值的指数平滑时间常数，闭合和睁开相同；0 表示直接用确认值 |
+| `ResetGapMs` | 整数 | `50` | 1–5000 | 相邻有效观测间隔超过此值时重新初始化视线并清零导数 |
+
+### 调整强度
+
+- 提高轻档截止频率，可以保留更多睁眼小变化；降低重档截止频率，可以加强半睁抑抖。
+- 提高 `Beta` 会在快速转眼时减轻滤波、加快跟随，也会放过更多快速波动。
+- 普通模式调整 `BlinkLow/High`；dual 调整 `OpennessHigh/Low`。两个端点之间连续过渡到重档，端点收得越近，强度变化越集中。
+
+普通模式使用 `LightCutoffHz` 和 `Beta`，dual 使用 `DualLightCutoffHz` 和 `DualBeta`。dual 字段省略时采用表中默认值，显式设为 `null` 时继承对应普通值。重档、导数截止及时间参数由两种模式共用。
+
+### 处理顺序
+
+1. **读取眼睑值。**普通模式取近期有效的 `max(EyeBlinkL, EyeBlinkR)`；dual 取本眼同帧有效 openness。普通模式的 Blink 必须来自同一会话，满足 `Stale.FaceMs`，且与眼追帧的源时间差不超过 `min(250 ms, Stale.FaceMs)`。
+2. **确认闭合程度。**在最近 `LidConfirmMs` 中取最睁开的值：Blink 取最小值，openness 取最大值。窗口保留睁眼历史时，短眨眼不会触发重滤波。设为 0 可跳过确认。
+3. **平滑眼睑并计算强度。**确认值经 `LidSmoothingMs` 指数平滑得到 `s`，再映射为 `q`：普通模式为 `(s-BlinkLow)/(BlinkHigh-BlinkLow)`，dual 为 `(s-OpennessHigh)/(OpennessLow-OpennessHigh)`。将 `q` 限制到 0–1 后，权重为 `q*q*(3-2*q)`。
+4. **平滑视线。**以当前模式的轻档 `light` 和速度系数 `beta` 计算截止频率：`light * (HeavyCutoffHz/light)^weight + beta * norm(derivativeXY)`，再使用 OneEuro 的 `alpha=1/(1+1/(2*pi*cutoff*dt))` 更新 gaze。
+
+眼睑平滑以首个有效值初始化，后续更新为 `s += (1-exp(-deltaMs/LidSmoothingMs))*(confirmed-s)`。眼睑无效时保持已有状态；gaze 无效但眼睑有效时，仍更新眼睑状态。确认窗口不足指定时长时使用已有样本，睁眼观测立即影响确认值。
+
+计时使用实际观察到的帧内源时间戳。重复或乱序帧被跳过，gaze 无效时保持输出。有效 gaze 间隔超过 `ResetGapMs` 后，直接采用新输入并清零导数，眼睑状态继续保留。来源、会话或模式切换会完整重置滤波；连接超时时的输出保持由 `Stale.NeutralizeOnTimeout` 决定。旧 536 格式没有可靠源时钟，绕过该滤波。
+
+本节出现格式错误、未知或重复字段、数值越界或端点顺序错误时，平滑关闭并记录诊断。配置工具使用相同校验；旧模块配置导入显式关闭新增平滑。
+
 ## Stale
 
 | 字段 | 类型 | 默认值 | 取值 | 说明 |
 |---|---|---|---|---|
+| `NeutralizeOnTimeout` | 布尔值 | `false` | `true` / `false` | 过期后是否输出中性值；关闭时保留最近输出 |
 | `EyeMs` | 整数 | `250` | 1–5000 | 原生眼动数据的有效时长（ms） |
 | `FaceMs` | 整数 | `250` | 1–5000 | 表情数据的有效时长（ms） |
 | `NeutralPupilMillimeters` | 数值 | `3.5` | 1–10 | 无有效实测值时输出的瞳孔直径（mm） |
 
 越界时回退到默认值。时长以本机收到数据的时间计算，不使用发送端时间戳。
 
-表情数据超过 `FaceMs` 未更新时，表情输出归零。视线与睁眼度没有可用新值时，保持最近有效值，期限从该值的接收时间计算：原生眼动值使用 `EyeMs`，表情推算值使用 `FaceMs`。过期后视线回正、睁眼度为 1。瞳孔实测值超过 `EyeMs` 未更新时改用 `NeutralPupilMillimeters`。`Source=Auto` 判断数据源是否可用时也使用这两个时长。
+`NeutralizeOnTimeout` 默认为 `false`，已有配置省略该字段时也保持关闭。视线、睁眼度和瞳孔测量过期后保留最近有效值，表情过期后保留最近输出。设为 `true` 时，表情超过 `FaceMs` 后归零；原生视线与睁眼度超过 `EyeMs`、表情推算值超过 `FaceMs` 后，视线回正、睁眼度为 1；瞳孔测量超过 `EyeMs` 后改用 `NeutralPupilMillimeters`。
+
+这些新鲜度时限仍用于选源和接纳输入，过期输入仍会重置后处理的时间状态。关闭中性化时，连接及模式公告超时保留输出；新会话、换来源或模式、停用及退出会重置输出。新表情帧明确标为无效的区域仍会清零对应映射通道，这与超时处理不同。
 
 日志中的 `MissingFrames` 状态固定在数据中断 250 ms 后出现，不受本节设置影响。
 

@@ -39,6 +39,9 @@ public sealed class UnifiedPicoTrackingModule : ExtTrackingModule
             ModuleInformation.Active = true;
             config = ConfigStore.Load(Path.Combine(Path.GetDirectoryName(GetType().Assembly.Location)!, "UnifiedPicoModule.json"), Log);
             Log($"Eye policies: gaze={config.EyePolicy}; openness={config.OpennessPolicy}.");
+            Log($"Timeout neutralization: {(config.Stale.NeutralizeOnTimeout ? "enabled" : "disabled; hold last values")}.");
+            var smoothing = config.GazeSmoothing;
+            Log(FormattableString.Invariant($"Gaze smoothing: {(smoothing.Enabled ? "enabled" : "disabled")}; confirmed continuous eyelid curve; light={smoothing.LightCutoffHz}Hz heavy={smoothing.HeavyCutoffHz}Hz beta={smoothing.Beta} dualLight={smoothing.DualLightCutoffHz ?? smoothing.LightCutoffHz}Hz dualBeta={smoothing.DualBeta ?? smoothing.Beta} derivative={smoothing.DerivativeCutoffHz}Hz blink={smoothing.BlinkLow}/{smoothing.BlinkHigh} openness={smoothing.OpennessHigh}/{smoothing.OpennessLow} lidConfirm={smoothing.LidConfirmMs}ms lidSmoothing={smoothing.LidSmoothingMs}ms resetGap={smoothing.ResetGapMs}ms; source-clock native gaze only (Legacy536 bypass)."));
             var enabledRules = typeof(PostProcessingSettings).GetProperties().Where(p =>
                 (bool?)p.PropertyType.GetProperty("Enabled")?.GetValue(p.GetValue(config.PostProcessing)) == true).Select(p => p.Name).ToArray();
             Log("Enabled postprocessing: " + (enabledRules.Length == 0 ? "none (neutral mapping)" : string.Join(", ", enabledRules)) + "; fixed ConfigVersion=1 order; no runtime preset.");
@@ -49,7 +52,7 @@ public sealed class UnifiedPicoTrackingModule : ExtTrackingModule
             pipeline = new(config); diagnostics = new(Log); stopped = false;
             Status = ownsEye || ownsFace ? ModuleState.Active : ModuleState.Idle;
             if (ownsEye || ownsFace) StartSources();
-            Log("UnifiedPicoModule 0.1.2: VRCFT SDK 5.4.5 / net10; no installation or host configuration changes. UDP is unauthenticated: trusted LAN only. Live compatibility and coefficients are not calibrated/verified.");
+            Log("UnifiedPicoModule 0.2.0: VRCFT SDK 5.4.5 / net10. UDP is unauthenticated: trusted LAN only. Dual smoothing defaults were selected by offline replay; live validation is pending.");
             return (ownsEye, ownsFace);
         }
     }
@@ -72,7 +75,7 @@ public sealed class UnifiedPicoTrackingModule : ExtTrackingModule
                         if (coordinator is null) StartSources();
                         var (selected, snapshots, now) = coordinator!.Select();
                         var output = pipeline.Evaluate(selected, now);
-                        Write(output); diagnostics!.Report(snapshots, selected, output, now);
+                        Write(output); diagnostics!.Report(snapshots, selected, output, now, pipeline.GazeSmoothingWeights);
                         wasActive = true;
                     }
                     catch (Exception exception)

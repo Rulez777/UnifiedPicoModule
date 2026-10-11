@@ -14,7 +14,7 @@ UnifiedPicoModule is a PICO eye and face tracking module for VRCFaceTracking (VR
 
 Tracking data from a PICO headset can be delivered by several senders, including PicoFacialBridge, PICO Connect, Streaming Assistant and the earlier PicoFacialDataDaemon. Each sender uses its own data format and port. This module supports all of these formats, detects which source is currently available, and forwards its data to VRCFT through a single output, so there is no need to install a separate module for each sender.
 
-> The current release is a 0.1.2 preview, built against VRCFT 5.4.5 (net10.0). See [Compatibility](#compatibility) for which combinations have been verified and the [changelog](CHANGELOG.md) for release changes.
+> The current release is a 0.2.0 preview, built against VRCFT 5.4.5 (net10.0). See [Compatibility](#compatibility) for which combinations have been verified and the [changelog](CHANGELOG.md) for release changes.
 
 ## Supported senders
 
@@ -68,9 +68,10 @@ If the file does not exist on first start, the module generates a default config
 | `Bridge.IP` | `null` | IPv4 address of the headset. Use this when automatic discovery fails or when more than one headset is on the network. The address is shown in the PicoFacialBridge interface |
 | `Source` | `Auto` | How the data source is selected: `Auto`, `Bridge` or `Streaming` |
 | `DisableEyeTracking` / `DisableFaceTracking` | `false` | Disable eye or face output respectively. With Bridge, the headset also stops sending the corresponding channel |
-| `EyePolicy` | `NativePreferred` | Gaze source; prefers native gaze by default |
-| `OpennessPolicy` | `Auto` | Openness source: normal mode uses `1 - EyeBlink`; enhanced mode prefers native Openness, falling back to Blink when invalid |
+| `EyePolicy` | `NativePreferred` | Gaze source policy; see [Eye policy and gain](docs/configuration.md#eye-policy-and-gain) |
+| `OpennessPolicy` | `Auto` | Normal mode uses `1 - EyeBlink`; confirmed enhanced mode uses that eye's native Openness. Invalid data holds the last valid value |
 | `EyeGain` | All `1` | Gain for the gaze X and Y axes and eye openness, set separately for each eye |
+| `GazeSmoothing.Enabled` | `true` | Enable eyelid-adaptive smoothing for source-clock native gaze; set `false` to disable. See [Gaze smoothing](docs/configuration.md#gaze-smoothing) |
 | `AllowFallback` | `false` | Whether to switch to the other source when the current one becomes unavailable |
 | `Streaming.LocalOnly` | `true` | Accept streaming data only from the local machine. PICO Connect runs locally, so this normally does not need to be changed |
 
@@ -102,13 +103,13 @@ The main fields are:
 | `state` | `Connected`: connected and receiving data. `MissingFrames`: the peer is online but data has stopped, for example because the headset is asleep or the sender is paused. `Searching`: no peer has been found yet |
 | `selected` | Whether this is the source currently in use |
 | `E/morphology` | Receive rates of eye data and expression data |
-| `Eye origin` | Where gaze comes from. `native-per-eye`: native per-eye gaze. `native-combined`: native combined gaze. `blendshape-derived`: derived from expressions. `neutral`: no usable data at the moment |
-| `openness` | Where openness comes from. `blendshape-blink`: face-tracking Blink. `native-openness`: native openness. `neutral`: expired or no valid value |
+| `Eye origin` | Where the current or held gaze comes from. `native-per-eye`: native per-eye gaze. `native-combined`: native combined gaze. `blendshape-derived`: derived from expressions. `neutral`: no retained value or timeout neutralization is enabled and the value has expired |
+| `openness` | Where the current or held openness comes from. `blendshape-blink`: face-tracking Blink. `native-openness`: native openness. `neutral`: no retained value or timeout neutralization is enabled and the value has expired |
 | `pupil` | `measured` is a measured pupil diameter; `estimated` means the default of 3.5 mm is used |
 
 With PICO Connect, the log shows the source as `Streaming/StreamingHeader16` and the gaze origin as `blendshape-derived`. This is expected.
 
-When eyelid data briefly becomes invalid, the module holds the last valid openness. By default, the eyes return to open when the last valid eyelid sample is older than 250 ms. Expired gaze returns to center and expressions go to zero.
+By default, expired data retains the last gaze, openness, pupil diameter and expression output. Set `Stale.NeutralizeOnTimeout=true` to restore timeout neutralization: gaze returns to center, eyes open, pupil diameter uses the neutral value, and expressions go to zero after the configured expiry limits.
 
 ## Expression post-processing
 
@@ -179,14 +180,14 @@ If the tongue value briefly drops to zero, enable `TongueHold`. If the tongue ap
 
 ## Compatibility
 
-As of 2026-10-02, the following combinations have been verified on a PICO 4 Pro:
+The following input configurations have been verified on a PICO 4 Pro:
 
 | Sender | Verified |
 |---|---|
-| PicoFacialBridge 0.3.0 (BridgeSplit, enhanced mode) | Channel subscription, all four combinations of the eye and face toggles, return to neutral when data stops, automatic recovery after an application restart, and avatar expression tracking |
+| PicoFacialBridge 0.3.0 (BridgeSplit, enhanced mode) | Channel subscription, eye and face toggles, reconnection after an application restart, and avatar expression tracking |
 | PICO Connect 10.6.6 (`faceTrackingTransferProtocol=2`, port 29765) | Face data at about 72 Hz with no packet loss; avatar tracking works as expected |
 
-If you use another sender or version, please open an issue with your log and results.
+The balanced dual defaults were selected offline; this preset and the fixed-openness final output await live validation. Results from other input configurations are welcome in issues.
 
 ## Network security and privacy
 

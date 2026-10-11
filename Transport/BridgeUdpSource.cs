@@ -60,7 +60,7 @@ public sealed class BridgeUdpSource : UdpTrackingSource
                 peer = null;
                 ClearSubscription();
                 lastData = lastMode = 0;
-                Reset(null, new(), ConnectionState.Searching, "Control/data timeout; reconnecting without STOP");
+                Reset(null, new(), ConnectionState.Searching, "Control/data timeout; reconnecting without STOP", timeout: true);
                 Publish(Current with { LastControl = 0 });
                 nextDiscovery = now;
             }
@@ -71,7 +71,7 @@ public sealed class BridgeUdpSource : UdpTrackingSource
                 // downgrade capability even if MARCO/data continue; never infer mode from vectors.
                 var modeTimeout = Math.Min(20000, controlTimeoutMs);
                 if (Current.Capabilities.ModeKnown && (now - lastMode) * 1000 >= modeTimeout)
-                    Reset(Current.Protocol, new(), Current.State, "Mode advertisement expired; capabilities downgraded");
+                    Reset(Current.Protocol, new(), Current.State, "Mode advertisement expired; capabilities downgraded", timeout: true);
                 if ((lastData == 0 || now - lastData > 0.25) && Current.State != ConnectionState.MissingFrames)
                     Publish(Current with { State = ConnectionState.MissingFrames,
                         Detail = subscribed && effectiveMask == 0 ? "Peer alive; negotiated channels paused by local switches" :

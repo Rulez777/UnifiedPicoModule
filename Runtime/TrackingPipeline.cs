@@ -11,7 +11,7 @@ public sealed class TrackingPipeline
     private readonly EyeResolver eyes;
     private readonly PostProcessor processor;
     private SourceKind? source;
-    private long generation = -1, faceSequence = -1;
+    private long generation = -1, outputGeneration = -1, faceSequence = -1;
     private ExpressionFrame faceOutput = new();
     private bool hadFreshFace;
     private double lastProcessedFaceArrival;
@@ -20,10 +20,16 @@ public sealed class TrackingPipeline
     {
         this.config = config; eyes = new(config); processor = new(config.PostProcessing);
     }
-    public void Reset()
+    public void Reset() => Reset(preserveOutput: false);
+
+    private void Reset(bool preserveOutput)
     {
-        eyes.Reset(); processor.Reset(); faceOutput = new(); faceSequence = -1;
-        source = null; generation = -1; hadFreshFace = false; lastProcessedFaceArrival = 0;
+        // Connection timeouts can discard transport caches without neutralizing held output.
+        // Explicit source/session changes and lifecycle stops still clear output state.
+        if (!preserveOutput) { eyes.Reset(); faceOutput = new(); }
+        else eyes.ResetSmoothing();
+        processor.Reset(); faceSequence = -1;
+        source = null; generation = outputGeneration = -1; hadFreshFace = false; lastProcessedFaceArrival = 0;
     }
     public TrackingOutput Evaluate(SourceSnapshot? snapshot, double now)
     {
@@ -33,7 +39,10 @@ public sealed class TrackingPipeline
         }
         if (source != snapshot.Source || generation != snapshot.Generation)
         {
-            Reset(); source = snapshot.Source; generation = snapshot.Generation;
+            var preserveOutput = !config.Stale.NeutralizeOnTimeout && source == snapshot.Source &&
+                outputGeneration == snapshot.OutputGeneration;
+            Reset(preserveOutput); source = snapshot.Source; generation = snapshot.Generation;
+            outputGeneration = snapshot.OutputGeneration;
         }
         bool fresh = snapshot.Face is { } face && MonotonicClock.Fresh(face.Arrival, now, config.Stale.FaceMs);
         if (fresh && snapshot.Face is { } raw)
@@ -56,7 +65,8 @@ public sealed class TrackingPipeline
         else
         {
             if (hadFreshFace) processor.Reset();
-            hadFreshFace = false; faceOutput = new();
+            hadFreshFace = false;
+            if (config.Stale.NeutralizeOnTimeout) faceOutput = new();
         }
         var (left, right) = eyes.Resolve(snapshot, now);
         var output = faceOutput.Clone(); output.Clamp(config.LegacyExpressionCeiling ? 0.99f : 1);
@@ -64,4 +74,5 @@ public sealed class TrackingPipeline
     }
     public TrackingOutput Neutral => new(new(), new(PupilMillimeters: config.Stale.NeutralPupilMillimeters),
         new(PupilMillimeters: config.Stale.NeutralPupilMillimeters));
+    public (double Left, double Right)? GazeSmoothingWeights => eyes.SmoothingWeights;
 }

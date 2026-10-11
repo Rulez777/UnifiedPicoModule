@@ -6,7 +6,8 @@ public sealed class DiagnosticReporter(Action<string> log)
 {
     private double lastReport;
     private readonly Dictionary<SourceKind, (long Generation, long Eye, long Face)> previous = [];
-    public void Report(IReadOnlyList<SourceSnapshot> snapshots, SourceSnapshot? selected, TrackingOutput output, double now)
+    public void Report(IReadOnlyList<SourceSnapshot> snapshots, SourceSnapshot? selected, TrackingOutput output, double now,
+        (double Left, double Right)? smoothingWeights = null)
     {
         if (now - lastReport < 5) return;
         double elapsed = lastReport > 0 ? now - lastReport : 5;
@@ -23,6 +24,7 @@ public sealed class DiagnosticReporter(Action<string> log)
                 $"modeKnown={snapshot.Capabilities.ModeKnown} enhance={snapshot.Capabilities.Enhanced} independent={snapshot.Capabilities.IndependentPerEye} drops={snapshot.DroppedPackets}; {snapshot.Detail}");
         }
         log($"Eye origin L/R={output.Left.GazeOrigin}/{output.Right.GazeOrigin}; openness L/R={output.Left.OpennessOrigin}/{output.Right.OpennessOrigin}; pupil L/R={(output.Left.RealPupil ? "measured" : "estimated")}/{(output.Right.RealPupil ? "measured" : "estimated")}. Connected-but-no-data cannot reliably distinguish pause from missing sensor frames.");
+        if (smoothingWeights is { } weights) log($"Gaze smoothing weight L/R={weights.Left:F3}/{weights.Right:F3} (0=light, 1=heavy).");
         lastReport = now;
     }
     private static string Age(double? arrival, double now) => arrival is { } time ? $"{Math.Max(0, now - time) * 1000:F0}ms" : "none";

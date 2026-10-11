@@ -33,6 +33,8 @@ public static class LegacyImporter
         };
         var text = File.ReadAllText(path);
         var config = new ModuleConfig();
+        config.GazeSmoothing.Enabled = false;
+        report.Add("迁移保持 GazeSmoothing.Enabled=false，不额外平滑旧配置的视线。");
         // Imports preserve legacy gain behavior instead of adding the fresh-install EyeWide x2.
         config.PostProcessing.ChannelGain.Enabled = false;
         report.Add("迁移不自动应用新安装的 EyeWide ×2 默认补偿；按旧配置保留增益语义。");
@@ -59,7 +61,7 @@ public static class LegacyImporter
     {
         config.Source = SourceSelection.Bridge;
         config.EyePolicy = version == BridgeCurrent ? EyePolicy.NativePreferred : EyePolicy.LegacyNative;
-        report.Add("睁眼度默认使用独立的 OpennessPolicy=Auto：普通或未知模式用 1 - EyeBlink，已确认增强模式优先原生睁眼度；不保留普通模式原生优先。需要固定来源时可显式设为 BlendshapeOnly 或 NativePreferred，不影响视线。");
+        report.Add("睁眼度默认使用独立的 OpennessPolicy=Auto：普通或未知模式只用 1 - EyeBlink，已确认增强模式只用原生睁眼度；选定来源无效时不切换，默认保持本眼最近有效值。需要固定来源时可显式设为 BlendshapeOnly 或 NativePreferred，不影响视线。");
         config.LegacyPerEyeGaze = version == BridgeUpstream;
         config.LegacyExpressionCeiling = false;
         config.Bridge.Protocol = version == BridgeCurrent ? InputProtocol.BridgeSplit : InputProtocol.DaemonLegacy536;

@@ -106,12 +106,16 @@ public abstract class UdpTrackingSource : ITrackingSource
             Interlocked.CompareExchange(ref Current, snapshot, previous);
     }
 
-    protected void Reset(InputProtocol? protocol, CapabilitySnapshot capabilities, ConnectionState state, string detail)
+    protected void Reset(InputProtocol? protocol, CapabilitySnapshot capabilities, ConnectionState state, string detail,
+        bool timeout = false)
     {
         eyeTimestamp = faceTimestamp = null;
         eyeCount = faceCount = auxiliaryCount = 0;
         rateStart = MonotonicClock.Now;
-        Publish(Current with { Generation = Current.Generation + 1, Protocol = protocol,
+        // Timeout generations clear transport state, but can retain output. Keep a separate
+        // generation so a later timeout cannot hide an intervening session/mode change.
+        Publish(Current with { Generation = Current.Generation + 1,
+            OutputGeneration = Current.OutputGeneration + (timeout ? 0 : 1), Protocol = protocol,
             Capabilities = capabilities, State = state, Eye = null, Face = null, Detail = detail });
         Log($"{Current.Source}: generation={Current.Generation}, protocol={protocol?.ToString() ?? "unlocked"}, {detail}");
     }

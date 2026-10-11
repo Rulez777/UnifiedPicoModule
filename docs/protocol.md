@@ -288,7 +288,7 @@ Gaze takes the vector's X and Y components directly, without normalization.
 
 | Policy | Gaze |
 |---|---|
-| `NativePreferred` (default) | Native gaze first; derived from shapes when native gaze is unavailable |
+| `NativePreferred` (default) | Selected by protocol; see [Eye policy and gain](configuration.md#eye-policy-and-gain) |
 | `LegacyNative` | Native gaze only, never derived |
 | `BlendshapeOnly` | Derived from shapes only |
 
@@ -296,15 +296,15 @@ Gaze takes the vector's X and Y components directly, without normalization.
 
 | Policy | Openness | Origin |
 |---|---|---|
-| `Auto` (default) | Normal mode: `1 - EyeBlink`. Enhanced mode: native Openness first, otherwise `1 - EyeBlink` | `native-openness` or `blendshape-blink` |
+| `Auto` (default) | Normal mode: only `1 - EyeBlink`. Confirmed enhanced mode: only that eye's native Openness | `native-openness` or `blendshape-blink`, selected by mode |
 | `BlendshapeOnly` | Always `1 - EyeBlink` | `blendshape-blink` |
-| `NativePreferred` | Always prefer native Openness, otherwise `1 - EyeBlink` | `native-openness` or `blendshape-blink` |
+| `NativePreferred` | Only that eye's native Openness, without Blink fallback | `native-openness` |
 
-`Auto` uses the enhanced-mode policy when the mode announcement is current and the internal capability state has `ModeKnown=true` and `Enhanced=true`; otherwise it uses Blink. Native values and Blink are checked against their respective validity bits and reception ages.
+`Auto` uses the enhanced-mode policy when the mode announcement is current and the internal capability state has `ModeKnown=true` and `Enhanced=true`; otherwise it uses Blink. Native values and Blink are checked against their respective validity bits and reception ages. An unavailable selected source retains that eye's existing value rather than substituting the other source. Before any valid value, or after expiry with timeout neutralization enabled, the origin is `neutral`.
 
 VRCFT outputs eyelid closure as `EyeClosed = 1 - Openness`. Gaze and openness origins are logged separately; for holding and output after invalidity, see [Timestamps, expiry and neutral output](#timestamps-expiry-and-neutral-output).
 
-When native gaze is available, it is chosen in the following order: if the per-eye conditions are met and that eye's gaze is valid, the per-eye gaze is used and the origin is `native-per-eye`; otherwise the combined gaze is used and the origin is `native-combined`.
+When the per-eye conditions are met, the native gaze origin is `native-per-eye` (that eye's own gaze); otherwise it is `native-combined` (combined gaze).
 
 Deriving gaze from shapes requires all four of the eye's `EyeLookIn`, `EyeLookOut`, `EyeLookUp` and `EyeLookDown` shapes, and the origin is `blendshape-derived`:
 
@@ -322,7 +322,7 @@ Per-eye gaze is used only when one of the following holds:
 
 ### Pupil
 
-A pupil diameter is used only when its status bit is valid and the converted value is between 1 and 12 mm, regardless of the eye policy. Without valid pupil data, the output is `Stale.NeutralPupilMillimeters` (3.5 mm by default), shown as `estimated` in the log. The module does not derive pupil size from openness or shapes.
+A pupil diameter is used only when its status bit is valid and the converted value is between 1 and 12 mm, regardless of the eye policy. The last measurement is retained during invalidity by default. Before any measurement, after an output reset, or after expiry with timeout neutralization enabled, the output is `Stale.NeutralPupilMillimeters` (3.5 mm by default), shown as `estimated` in the log. The module does not derive pupil size from openness or shapes.
 
 ## Timestamps, expiry and neutral output
 
@@ -334,9 +334,9 @@ Timestamp rules:
 
 Eye and face data arrive, are deduplicated and expire independently. The module does not interpolate or synthesize samples. A new eye sample does not cause cached expressions to be processed again.
 
-When no new usable gaze or openness value is available, the last valid value is held until its source expiry limit in the table below.
+`Stale.NeutralizeOnTimeout` defaults to `false`: when data expires, gaze, openness and pupil diameter retain their last valid values, and expressions retain their last output. Freshness checks and post-processing timing resets still apply.
 
-Output after expiry:
+Output after expiry with `Stale.NeutralizeOnTimeout=true`:
 
 | Data | Expiry threshold | Output after expiry |
 |---|---|---|
@@ -345,7 +345,7 @@ Output after expiry:
 | Derived gaze and openness | `Stale.FaceMs`, 250 ms by default | Gaze returns to center; openness is 1 |
 | Pupil | `Stale.EyeMs`, 250 ms by default | `Stale.NeutralPupilMillimeters` |
 
-When no source is selected, the output is fully neutral. When the source's Generation changes, eye resolution and post-processing state are reset, and earlier data does not carry over into the new Generation.
+When no source is selected, the output is fully neutral. A new session, source or mode resets eye resolution and post-processing state. A Generation change caused solely by a connection or mode-announcement timeout retains eye and expression output when `NeutralizeOnTimeout=false`, while transport caches and post-processing timing state are still cleared. Module deactivation, teardown and update errors reset output.
 
 Expression shapes are mapped to VRCFT expression channels through a fixed table, limited to 0 to 1, with no gain applied during mapping. For the correction rules applied after mapping, see the [post-processing reference](postprocessing.md). `DisableEyeTracking` and `DisableFaceTracking` mask the eye-region shapes and the remaining shapes respectively.
 

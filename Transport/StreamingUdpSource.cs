@@ -61,7 +61,7 @@ public sealed class StreamingUdpSource : UdpTrackingSource
         if ((now - lastData) * 1000 >= timeoutMs)
         {
             peer = null;
-            Reset(null, new(), ConnectionState.Searching, "Streaming session timeout; caches and protocol/IP lock cleared");
+            Reset(null, new(), ConnectionState.Searching, "Streaming session timeout; caches and protocol/IP lock cleared", timeout: true);
             RefreshLocalAddresses();
         }
         else if (now - lastData > 0.25 && Current.State != ConnectionState.MissingFrames)

@@ -37,6 +37,7 @@ Personal configurations and migration reports can contain IP addresses or local 
 | `EyePolicy` | enum | `NativePreferred` | `NativePreferred`, `LegacyNative`, `BlendshapeOnly` | Gaze source policy; see [Eye policy and gain](#eye-policy-and-gain) |
 | `OpennessPolicy` | enum | `Auto` | `Auto`, `BlendshapeOnly`, `NativePreferred` | Openness source policy; see [Eye policy and gain](#eye-policy-and-gain) |
 | `EyeGain` | object | all `1` | | Gain for gaze and openness of each eye |
+| `GazeSmoothing` | object | enabled, mode-specific defaults | | Eyelid-adaptive native gaze smoothing; see [Gaze smoothing](#gaze-smoothing) |
 | `Stale` | object | see [Stale](#stale) | | Data expiry and the neutral pupil value |
 | `AllowFallback` | boolean | `false` | | Whether to switch entirely to the other source when the current one becomes unavailable |
 | `AutoSelectionWindowMs` | integer | `1500` | 100–60000 | How long `Auto` waits preferentially for Bridge after startup (ms) |
@@ -89,7 +90,7 @@ With `ListenAddress` set to `0.0.0.0`, the module listens on all local addresses
 
 `ReconnectMs` also defines the discovery reply window: replies are accepted only within that time (at least 1 second) after a discovery request was sent.
 
-`ControlTimeoutMs` determines when the peer is considered offline. After the timeout, the module drops the current peer and starts discovery again, without sending a stop command to the peer. This is independent of data expiry (`Stale`): once data stops for 250 ms the connection state shows `MissingFrames` and the outputs return to neutral according to `Stale`, but the connection is kept as long as control packets keep arriving. If the BridgeSplit mode announcement is not refreshed within the shorter of `ControlTimeoutMs` and 20 seconds, the module withdraws the confirmed enhanced capabilities.
+`ControlTimeoutMs` determines when the peer is considered offline. After the timeout, the module drops the current peer and starts discovery again, without sending a stop command to the peer. This is independent of data expiry (`Stale`): once data stops for 250 ms the connection state shows `MissingFrames`, but the connection is kept as long as control packets keep arriving. If the BridgeSplit mode announcement is not refreshed within the shorter of `ControlTimeoutMs` and 20 seconds, the module withdraws the confirmed enhanced capabilities. These timeouts retain output by default; `Stale.NeutralizeOnTimeout=true` enables neutralization.
 
 With `Protocol` set to `BridgeSplit`, only split packets that match the acknowledged subscription are accepted. With `DaemonLegacy536`, the module does not send subscription requests and accepts only 536-byte packets. For the packet structures, see the [protocol reference](protocol.md).
 
@@ -143,7 +144,7 @@ With a complete `HeaderProfile`, a 29765 datagram must meet the length and `trac
 
 | Value | Gaze |
 |---|---|
-| `NativePreferred` | Native per-eye gaze, then native combined gaze, then gaze derived from the `EyeLook` expressions |
+| `NativePreferred` | Fixed source by protocol: native gaze for Bridge, `EyeLook`-derived gaze for streaming formats |
 | `LegacyNative` | Native gaze only (per-eye or combined), with no fallback to expression-derived gaze |
 | `BlendshapeOnly` | Gaze derived from the `EyeLook` expressions only |
 
@@ -151,9 +152,9 @@ With a complete `HeaderProfile`, a 29765 datagram must meet the length and `trac
 
 | Value | Openness |
 |---|---|
-| `Auto` (default) | Normal mode: `1 − EyeBlink`. Enhanced mode: native Openness first, otherwise `1 − EyeBlink` |
+| `Auto` (default) | Normal mode: only `1 − EyeBlink`. Confirmed enhanced mode: only that eye's native Openness |
 | `BlendshapeOnly` | Always `1 − EyeBlink` |
-| `NativePreferred` | Always prefer native Openness, otherwise `1 − EyeBlink` |
+| `NativePreferred` | That eye's native Openness |
 
 Default configuration:
 
@@ -167,13 +168,13 @@ Default configuration:
 
 `Auto` identifies enhanced mode from Bridge's mode announcement. When the announcement is missing or expired, it uses Blink. Omitting `OpennessPolicy` from the configuration selects `Auto`.
 
-The hold duration during brief eyelid invalidity is configured under [Stale](#stale).
+Missing, stale or invalid data from the selected source does not switch sources. Each eye retains its last valid openness by default, or uses 1 before any valid value. Optional timeout neutralization is configured under [Stale](#stale).
 
-Native per-eye gaze is used only when the capability is confirmed. For BridgeSplit, the headset must announce enhanced mode with independent per-eye gaze; for DaemonLegacy536, `LegacyPerEyeGaze` must be enabled. In all other cases the combined gaze is used. For how capability announcements are evaluated, see the [protocol reference](protocol.md#bridge-control-and-capability-announcement).
+Native gaze has a fixed source selected by capability: BridgeSplit uses each eye's own gaze when the headset announces enhanced mode with independent per-eye gaze; DaemonLegacy536 does the same when `LegacyPerEyeGaze` is enabled. Otherwise, combined gaze is used. Invalidity does not switch the selected source; hold and expiry durations are configured under [Stale](#stale). For how capability announcements are evaluated, see the [protocol reference](protocol.md#bridge-control-and-capability-announcement).
 
 When gaze is derived from expressions, the left eye X axis is `EyeLookIn − EyeLookOut`, the right eye X axis is `EyeLookOut − EyeLookIn`, and the Y axis of both eyes is `EyeLookUp − EyeLookDown`. This is an approximation from expression differences and carries no vergence information.
 
-Pupil diameter is handled the same way under all three policies: a valid measured value between 1 and 12 mm is used when present; otherwise `Stale.NeutralPupilMillimeters` is output. The module does not estimate pupil size from openness or other data.
+Pupil diameter is handled the same way under all three policies: a valid measured value between 1 and 12 mm is used when present and retained during invalidity by default. `Stale.NeutralPupilMillimeters` is used before any measurement, after an output reset, or after expiry when timeout neutralization is enabled. The module does not estimate pupil size from openness or other data.
 
 With `Source=Auto`, the module uses both policies to determine which eye fields are usable when selecting a source.
 
@@ -188,17 +189,66 @@ Out-of-range or non-finite values fall back to 1. After the gain is applied, gaz
 
 `LeftOpenness` and `RightOpenness` multiply openness. With a gain above 1, clamping can keep the output fully open during slight closure; keep these at 1 when investigating eyelid response.
 
+## Gaze smoothing
+
+`GazeSmoothing.Enabled` defaults to `true`. Omitting the section also enables the mode-specific defaults below. To disable it, add `"GazeSmoothing": { "Enabled": false }` at the root of the configuration. Explicitly saved values take precedence; omitted fields use this version's defaults. Configuration changes take effect at the next module initialization.
+
+To restore all defaults in this section, back up the configuration, remove `GazeSmoothing` and restart VRCFT.
+
+The filter processes each eye's native gaze XY before `EyeGain`. Strength changes continuously with eyelid state: open eyes retain more small movements, while half-open eyes receive stronger smoothing. Stronger filtering generally follows eye movements more slowly. Expression-derived gaze uses its existing output path. This section controls gaze; `OpennessPolicy` controls eyelid output. See the [README compatibility section](../README.md#compatibility) for validation status.
+
+| Field | Type | Default | Valid values | Meaning |
+|---|---|---|---|---|
+| `Enabled` | boolean | `true` | `true` / `false` | Enable smoothing |
+| `LightCutoffHz` | number | `100` | 0.01–1000 | Minimum cutoff at eyelid weight 0; larger values follow input faster |
+| `HeavyCutoffHz` | number | `4` | 0.01–1000, ≤ `LightCutoffHz` | Minimum cutoff at weight 1; smaller values smooth more strongly |
+| `Beta` | number | `1` | 0–100 | Increase cutoff in proportion to the smoothed XY derivative norm |
+| `DualLightCutoffHz` | number or `null` | `250` | 0.01–1000, ≥ `HeavyCutoffHz` | Dual per-eye light cutoff; omission uses 250, explicit `null` inherits `LightCutoffHz` |
+| `DualBeta` | number or `null` | `8` | 0–100 | Dual per-eye speed coefficient; omission uses 8, explicit `null` inherits `Beta` |
+| `DerivativeCutoffHz` | number | `1` | 0.01–1000 | Cutoff for smoothing the input derivative |
+| `BlinkLow` | number | `0.30` | 0–1, < `BlinkHigh` | Combined gaze: smoothed Blink at weight 0 |
+| `BlinkHigh` | number | `0.60` | 0–1, > `BlinkLow` | Combined gaze: smoothed Blink at weight 1 |
+| `OpennessHigh` | number | `0.80` | 0–1, > `OpennessLow` | Per-eye gaze: smoothed openness at weight 0 |
+| `OpennessLow` | number | `0.45` | 0–1, < `OpennessHigh` | Per-eye gaze: smoothed openness at weight 1 |
+| `LidConfirmMs` | integer | `350` | 0–2000 | Rolling source-time window for confirming closure; 0 bypasses confirmation |
+| `LidSmoothingMs` | integer | `150` | 0–5000 | Exponential smoothing time constant for the confirmed eyelid value, the same for closing and opening; 0 uses the confirmed value directly |
+| `ResetGapMs` | integer | `50` | 1–5000 | Reinitialize gaze and clear its derivative after a longer gap between valid observations |
+
+### Adjusting strength
+
+- Raise the light cutoff to retain more small open-eye movements; lower the heavy cutoff for stronger half-open smoothing.
+- Raise `Beta` to reduce filtering during fast eye movements and follow them faster. This also passes more rapid fluctuations.
+- Use `BlinkLow/High` for normal mode and `OpennessHigh/Low` for dual. Filtering transitions continuously between the endpoints; closer endpoints concentrate the change in strength.
+
+Normal mode uses `LightCutoffHz` and `Beta`; dual uses `DualLightCutoffHz` and `DualBeta`. Omitted dual fields use the table defaults, while explicit `null` inherits the corresponding normal value. Heavy cutoff, derivative cutoff and timing settings are shared.
+
+### Processing order
+
+1. **Read the eyelid value.** Normal mode uses recent valid `max(EyeBlinkL, EyeBlinkR)`; dual uses the eye's own same-frame valid openness. Blink must belong to the same session, satisfy `Stale.FaceMs`, and have a source timestamp within `min(250 ms, Stale.FaceMs)` of the eye frame.
+2. **Confirm closure.** Take the most-open value in the last `LidConfirmMs`: minimum Blink or maximum openness. While open-eye history remains, a short blink does not trigger heavy filtering. Set 0 to skip confirmation.
+3. **Smooth eyelids and map strength.** Exponentially smooth the confirmed value over `LidSmoothingMs` to obtain `s`. Compute `q=(s-BlinkLow)/(BlinkHigh-BlinkLow)` in normal mode or `q=(s-OpennessHigh)/(OpennessLow-OpennessHigh)` in dual. Clamp `q` to 0–1 and use weight `q*q*(3-2*q)`.
+4. **Smooth gaze.** With the current mode's `light` and `beta`, the cutoff is `light * (HeavyCutoffHz/light)^weight + beta * norm(derivativeXY)`. Update gaze with the OneEuro coefficient `alpha=1/(1+1/(2*pi*cutoff*dt))`.
+
+Eyelid smoothing starts at the first valid value, then uses `s += (1-exp(-deltaMs/LidSmoothingMs))*(confirmed-s)`. Invalid eyelids retain their state; valid eyelids still update when gaze is invalid. A confirmation window shorter than the configured duration uses the available samples, and opening immediately affects the confirmed value.
+
+Timing uses the source timestamps of observed frames. Duplicate or reordered frames are skipped, and invalid gaze holds output. A valid-gaze gap longer than `ResetGapMs` adopts the new input directly and clears the derivative while retaining eyelid state. Source, session or mode changes reset the whole filter; timeout output retention follows `Stale.NeutralizeOnTimeout`. The legacy 536 format has no reliable source clock and bypasses filtering.
+
+Malformed, unknown or duplicate fields, out-of-range values and invalid endpoint ordering disable smoothing and produce diagnostics. The configuration tool applies the same validation; legacy-module imports explicitly disable the added smoothing.
+
 ## Stale
 
 | Field | Type | Default | Valid values | Description |
 |---|---|---|---|---|
+| `NeutralizeOnTimeout` | boolean | `false` | `true` / `false` | Replace expired output with neutral values; when disabled, retain the last output |
 | `EyeMs` | integer | `250` | 1–5000 | How long native eye data remains valid (ms) |
 | `FaceMs` | integer | `250` | 1–5000 | How long expression data remains valid (ms) |
 | `NeutralPupilMillimeters` | number | `3.5` | 1–10 | Pupil diameter output when no valid measurement is available (mm) |
 
 Out-of-range values fall back to the defaults. Ages are measured from the time the PC received the data; sender timestamps are not used.
 
-When expression data has not been updated for longer than `FaceMs`, expression output goes to zero. If no new usable gaze or openness value is available, the last valid value is held, with expiry measured from its reception time: native eye values use `EyeMs`, and expression-derived values use `FaceMs`. After expiry, gaze returns to center and openness becomes 1. A measured pupil value that has not been updated within `EyeMs` is replaced by `NeutralPupilMillimeters`. `Source=Auto` uses the same limits to decide whether a source is usable.
+`NeutralizeOnTimeout` defaults to `false`, including in existing configurations that omit it. Expired gaze, openness and pupil measurements retain their last valid values, and expired expressions retain their last output. With `true`, expression output goes to zero after `FaceMs`; gaze returns to center and openness becomes 1 after `EyeMs` for native values or `FaceMs` for expression-derived values; measured pupil diameter returns to `NeutralPupilMillimeters` after `EyeMs`.
+
+The freshness limits still apply to source selection and accepting input, and stale input resets post-processing timing state. Connection and mode-announcement timeouts retain output when neutralization is disabled. A new session, source or mode, module deactivation, and teardown reset output. An explicitly invalid region in a new expression frame still clears its mapped channels; this is separate from timeout handling.
 
 The `MissingFrames` state in the log always appears 250 ms after data stops and is not affected by these settings.
 

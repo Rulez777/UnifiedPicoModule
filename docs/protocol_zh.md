@@ -288,7 +288,7 @@ PICO Connect 10.6.6 实测的头部前 8 字节为 `00 33 02 01 00 01 01 00`，�
 
 | 策略 | 视线 |
 |---|---|
-| `NativePreferred`（默认） | 优先原生视线；原生视线不可用时由形态推算 |
+| `NativePreferred`（默认） | 按协议选择，见[眼动策略与增益](configuration_zh.md#眼动策略与增益) |
 | `LegacyNative` | 仅原生视线，不推算 |
 | `BlendshapeOnly` | 仅由形态推算 |
 
@@ -296,15 +296,15 @@ PICO Connect 10.6.6 实测的头部前 8 字节为 `00 33 02 01 00 01 01 00`，�
 
 | 策略 | 睁眼度 | 来源标记 |
 |---|---|---|
-| `Auto`（默认） | 普通模式取 `1 - EyeBlink`；增强模式优先原生 Openness，无效时取 `1 - EyeBlink` | `native-openness` 或 `blendshape-blink` |
+| `Auto`（默认） | 普通模式只取 `1 - EyeBlink`；已确认增强模式只取本眼原生 Openness | `native-openness` 或 `blendshape-blink`，按模式选定 |
 | `BlendshapeOnly` | 始终取 `1 - EyeBlink` | `blendshape-blink` |
-| `NativePreferred` | 始终优先原生 Openness，无效时取 `1 - EyeBlink` | `native-openness` 或 `blendshape-blink` |
+| `NativePreferred` | 只取本眼原生 Openness，不回退 Blink | `native-openness` |
 
-`Auto` 在模式公告有效且内部能力状态为 `ModeKnown=true`、`Enhanced=true` 时采用增强模式策略；其余情况使用 Blink。原生值和 Blink 均按各自的有效位及接收时间判断是否可用。
+`Auto` 在模式公告有效且内部能力状态为 `ModeKnown=true`、`Enhanced=true` 时采用增强模式策略；其余情况使用 Blink。原生值和 Blink 均按各自的有效位及接收时间判断是否可用。选定来源不可用时保持本眼已有值，不使用另一来源补齐；尚无有效值或启用超时中性化且已过期时，来源标记为 `neutral`。
 
 VRCFT 以 `EyeClosed = 1 - Openness` 输出闭眼程度。视线与睁眼度来源在日志中分别记录；数据失效后的保持和输出见[时间戳、过期与中性输出](#时间戳过期与中性输出)。
 
-原生视线在可用时，按以下顺序选取：满足分眼条件且该眼视线有效时，使用每眼视线，来源标记为 `native-per-eye`；否则使用合并视线，标记为 `native-combined`。
+满足分眼条件时，原生视线来源为 `native-per-eye`（本眼视线）；否则为 `native-combined`（合并视线）。
 
 由形态推算视线时，该眼的 `EyeLookIn`、`EyeLookOut`、`EyeLookUp`、`EyeLookDown` 四个形态必须全部存在，来源标记为 `blendshape-derived`：
 
@@ -322,7 +322,7 @@ VRCFT 以 `EyeClosed = 1 - Openness` 输出闭眼程度。视线与睁眼度来�
 
 ### 瞳孔
 
-瞳孔直径只在状态位有效且换算结果位于 1 至 12 mm 时采用，与眼动策略无关。没有有效瞳孔数据时，输出 `Stale.NeutralPupilMillimeters`（默认 3.5 mm），日志中标记为 `estimated`。模块不从睁眼度或形态推算瞳孔。
+瞳孔直径只在状态位有效且换算结果位于 1 至 12 mm 时采用，与眼动策略无关。失效时默认保持最近实测值。尚无实测值、输出重置后，或启用超时中性化且测量已过期时，输出 `Stale.NeutralPupilMillimeters`（默认 3.5 mm），日志中标记为 `estimated`。模块不从睁眼度或形态推算瞳孔。
 
 ## 时间戳、过期与中性输出
 
@@ -334,9 +334,9 @@ VRCFT 以 `EyeClosed = 1 - Openness` 输出闭眼程度。视线与睁眼度来�
 
 眼动与面部数据相互独立地到达、去重和过期，模块不做插值或合成。新的眼动样本不会触发对已缓存表情的重复处理。
 
-视线与睁眼度没有可用新值时，保持最近有效值，直到下表规定的来源有效期结束。
+`Stale.NeutralizeOnTimeout` 默认为 `false`：数据过期后，视线、睁眼度和瞳孔直径保持最近有效值，表情保持最近输出。新鲜度检查和后处理时间状态重置仍然生效。
 
-过期后的输出：
+设置 `Stale.NeutralizeOnTimeout=true` 时，过期后的输出为：
 
 | 数据 | 过期阈值 | 过期后的输出 |
 |---|---|---|
@@ -345,7 +345,7 @@ VRCFT 以 `EyeClosed = 1 - Openness` 输出闭眼程度。视线与睁眼度来�
 | 推算的视线与睁眼度 | `Stale.FaceMs`，默认 250 ms | 视线回正，睁眼度为 1 |
 | 瞳孔 | `Stale.EyeMs`，默认 250 ms | `Stale.NeutralPupilMillimeters` |
 
-没有选定数据源时，输出完全中性。数据源的 Generation 变化时，眼动解析与后处理的状态全部重置，此前的数据不会延续到新的 Generation。
+没有选定数据源时，输出完全中性。新会话、换来源或模式时重置眼动解析与后处理状态。仅因连接或模式公告超时导致的 Generation 变化，在 `NeutralizeOnTimeout=false` 时保留眼动和表情输出，但仍清除传输缓存及后处理时间状态。停用、退出及更新异常会重置输出。
 
 表情形态按固定表映射到 VRCFT 表情通道，取值限制在 0 至 1，映射过程不施加增益。映射之后的修正规则请参阅[后处理参考](postprocessing_zh.md)。`DisableEyeTracking` 与 `DisableFaceTracking` 分别屏蔽眼周形态与其余形态。
 

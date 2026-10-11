@@ -14,7 +14,7 @@ UnifiedPicoModule 是面向 VRCFaceTracking（VRCFT）的 PICO 眼动与面部�
 
 PICO 头显的追踪数据可以通过多种发送端输出，包括 PicoFacialBridge、PICO Connect、Streaming Assistant 以及早期的 PicoFacialDataDaemon。这些发送端使用的数据格式和端口各不相同。本模块支持上述全部格式，能够自动识别当前可用的数据源，并将数据统一输出至 VRCFT，因此无需针对不同的发送端分别安装模块。
 
-> 当前版本为 0.1.2 预览版，基于 VRCFT 5.4.5（net10.0）构建。各使用组合的验证情况请参阅[兼容性](#兼容性)，版本变化见[更新日志](CHANGELOG_zh.md)。
+> 当前版本为 0.2.0 预览版，基于 VRCFT 5.4.5（net10.0）构建。各使用组合的验证情况请参阅[兼容性](#兼容性)，版本变化见[更新日志](CHANGELOG_zh.md)。
 
 ## 支持的发送端
 
@@ -68,9 +68,10 @@ PICO 头显的追踪数据可以通过多种发送端输出，包括 PicoFacialB
 | `Bridge.IP` | `null` | 指定头显的 IPv4 地址，适用于自动发现失败或局域网内存在多台头显的情况。该地址可以在 PicoFacialBridge 界面中查看 |
 | `Source` | `Auto` | 数据源选择方式。可选 `Auto`、`Bridge` 或 `Streaming` |
 | `DisableEyeTracking` / `DisableFaceTracking` | `false` | 分别禁用眼动或面部输出。使用 Bridge 时，头显会同步停止发送对应通道 |
-| `EyePolicy` | `NativePreferred` | 视线来源，默认优先使用原生视线 |
-| `OpennessPolicy` | `Auto` | 睁眼度来源：普通模式取 `1 - EyeBlink`，增强模式优先使用原生 Openness，无效时回退 Blink |
+| `EyePolicy` | `NativePreferred` | 视线来源策略，详见[眼动策略与增益](docs/configuration_zh.md#眼动策略与增益) |
+| `OpennessPolicy` | `Auto` | 普通模式使用 `1 - EyeBlink`，已确认增强模式使用本眼原生 Openness；数据无效时保持最近有效值 |
 | `EyeGain` | 均为 `1` | 分别设置左右眼视线 X、Y 轴与睁眼度的增益 |
+| `GazeSmoothing.Enabled` | `true` | 对带源时间戳的原生视线启用眼睑自适应平滑；设为 `false` 可关闭，详见[视线平滑](docs/configuration_zh.md#视线平滑) |
 | `AllowFallback` | `false` | 当前数据源不可用时，是否切换到另一数据源 |
 | `Streaming.LocalOnly` | `true` | 仅接受本机发出的串流数据。PICO Connect 在本机运行，通常无需修改 |
 
@@ -102,13 +103,13 @@ Eye origin L/R=native-per-eye/native-per-eye; openness L/R=native-openness/nativ
 | `state` | `Connected`：已连接并在接收数据。`MissingFrames`：对端在线，但数据中断，例如头显休眠或发送端暂停。`Searching`：尚未发现对端 |
 | `selected` | 该数据源是否为当前选用的数据源 |
 | `E/morphology` | 眼动数据与表情数据的接收频率 |
-| `Eye origin` | 视线来源。`native-per-eye`：分眼原生视线。`native-combined`：合并原生视线。`blendshape-derived`：由表情推算。`neutral`：当前无可用数据 |
-| `openness` | 睁眼度来源。`blendshape-blink`：面捕 Blink。`native-openness`：原生睁眼度。`neutral`：已过期或无有效值 |
+| `Eye origin` | 当前或保持中的视线来源。`native-per-eye`：分眼原生视线。`native-combined`：合并原生视线。`blendshape-derived`：由表情推算。`neutral`：无保留值，或启用超时中性化后数据已过期 |
+| `openness` | 当前或保持中的睁眼度来源。`blendshape-blink`：面捕 Blink。`native-openness`：原生睁眼度。`neutral`：无保留值，或启用超时中性化后数据已过期 |
 | `pupil` | `measured` 为实测瞳孔直径；`estimated` 表示使用默认值 3.5 mm |
 
 使用 PICO Connect 时，日志中显示的数据源为 `Streaming/StreamingHeader16`，视线来源为 `blendshape-derived`，这属于正常现象。
 
-闭眼数据短暂失效时，模块保持最近有效的睁眼度。默认距最近有效闭眼数据超过 250 ms 后恢复睁眼。过期的视线回正，表情归零。
+默认在数据过期后保留最近的视线、睁眼度、瞳孔直径和表情输出。设置 `Stale.NeutralizeOnTimeout=true` 可启用超时中性化：达到配置的过期时限后，视线回正、眼睛睁开、瞳孔改用中性值、表情归零。
 
 ## 表情后处理
 
@@ -179,14 +180,14 @@ Eye origin L/R=native-per-eye/native-per-eye; openness L/R=native-openness/nativ
 
 ## 兼容性
 
-截至 2026-10-02，以下组合已在 PICO 4 Pro 上完成验证：
+已在 PICO 4 Pro 上验证的接入环境：
 
 | 发送端 | 验证内容 |
 |---|---|
-| PicoFacialBridge 0.3.0（BridgeSplit，增强模式） | 通道订阅、眼动与面部开关的四种组合、数据中断后恢复中性、应用重启后自动恢复，以及 Avatar 表情跟随 |
+| PicoFacialBridge 0.3.0（BridgeSplit，增强模式） | 通道订阅、眼动与面部开关、应用重启后恢复连接，以及 Avatar 表情跟随 |
 | PICO Connect 10.6.6（`faceTrackingTransferProtocol=2`，29765 端口） | 面部数据约 72 Hz，无丢包，Avatar 跟随正常 |
 
-如果您使用其他发送端或版本，欢迎通过 issue 附上日志并反馈结果。
+dual 均衡参数来自离线调参；该默认组合和固定睁眼度来源的最终输出尚待实机验证。其他接入环境的使用结果可通过 issue 反馈。
 
 ## 网络安全与隐私
 

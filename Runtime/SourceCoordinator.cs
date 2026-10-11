@@ -70,7 +70,7 @@ public sealed class SourceCoordinator : IDisposable
             EyeResolver.HasConsumableNative(snapshot, config)) return true;
         return snapshot.Face is { } face && MonotonicClock.Fresh(face.Arrival, now, config.Stale.FaceMs) &&
             (NeutralFaceMapper.HasConsumableExpressions(face, !config.DisableEyeTracking, !config.DisableFaceTracking) ||
-                !config.DisableEyeTracking && EyeResolver.HasConsumableFace(face, config));
+                !config.DisableEyeTracking && EyeResolver.HasConsumableFace(snapshot, config));
     }
     public IReadOnlyList<SourceSnapshot> Snapshots => sources.Select(s => s.Snapshot).ToArray();
     public void Dispose()
