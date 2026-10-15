@@ -159,7 +159,7 @@ This file is not a redistribution license addendum for the Apache-2.0 DLLs. The 
 - Source repository: [dotnet/dotnet pinned commit](https://github.com/dotnet/dotnet/tree/fad253f51b461736dfd3cd9c15977bb7493becef)
 - Dependencies: the net10 target depends on `Microsoft.Extensions.DependencyInjection.Abstractions` 10.0.1
 
-The module project references this package with `PrivateAssets=all`. `PrivateAssets` is a dependency-flow setting. It does not guarantee that the files are never copied, and it is not a license. The module package is assembled from a file allowlist and contains no logging or other NuGet DLLs. The required runtime dependencies are provided by the host, and their runtime compatibility has not been tested. Distributing these components instead would require a separate review of copyrights, licenses and addenda. Microsoft's copyright is not held by this project.
+The module project references this package with `PrivateAssets=all`. `PrivateAssets` is a dependency-flow setting. It does not guarantee that the files are never copied, and it is not a license. The module package is assembled from a file allowlist and contains no logging or other NuGet DLLs. The required runtime dependencies are provided by the host; the module has been run on official VRCFT 5.4.5, and other host versions have not been tested. Distributing these components instead would require a separate review of copyrights, licenses and addenda. Microsoft's copyright is not held by this project.
 
 ## Assets and future updates
 

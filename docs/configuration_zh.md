@@ -34,14 +34,10 @@
 | `DisableFaceTracking` | 布尔 | `false` | | 禁用面部表情输出 |
 | `Bridge` | 对象 | 见 [Bridge](#bridge) | | PicoFacialBridge 与 PicoFacialDataDaemon 的接收设置（9030 端口） |
 | `Streaming` | 对象 | 见 [Streaming](#streaming) | | 串流格式的接收设置（29765、29763 端口） |
-| `EyePolicy` | 枚举 | `NativePreferred` | `NativePreferred`、`LegacyNative`、`BlendshapeOnly` | 视线来源策略，见[眼动策略与增益](#眼动策略与增益) |
-| `OpennessPolicy` | 枚举 | `Auto` | `Auto`、`BlendshapeOnly`、`NativePreferred` | 睁眼度来源策略，见[眼动策略与增益](#眼动策略与增益) |
 | `EyeGain` | 对象 | 各项均为 `1` | | 左右眼视线与睁眼度的增益 |
-| `GazeSmoothing` | 对象 | 开启，按模式使用默认参数 | | 眼睑自适应原生视线平滑，见[视线平滑](#视线平滑) |
 | `Stale` | 对象 | 见 [Stale](#stale) | | 数据过期判定与中性瞳孔值 |
 | `AllowFallback` | 布尔 | `false` | | 当前数据源不可用时是否整体切换到另一数据源 |
 | `AutoSelectionWindowMs` | 整数 | `1500` | 100–60000 | `Auto` 模式下启动后优先等待 Bridge 的时长（ms） |
-| `LegacyPerEyeGaze` | 布尔 | `false` | | 将 536 字节格式中的分眼视线视为独立数据，见[旧版兼容开关](#旧版兼容开关) |
 | `LegacyExpressionCeiling` | 布尔 | `false` | | 将表情输出上限设为 0.99 |
 | `PostProcessing` | 对象 | 仅 `ChannelGain` 启用 | | 表情后处理规则，见[后处理](#后处理) |
 | `Migration` | 对象或 `null` | `null` | | 迁移工具写入的来源记录，运行时不使用 |
@@ -58,7 +54,7 @@
 | `Bridge` | 仅 Bridge | 固定使用 Bridge |
 | `Streaming` | 仅 Streaming | 固定使用 Streaming，不等待 |
 
-可用数据是指在 `Stale` 时限内到达、并且在当前 `EyePolicy`、`OpennessPolicy` 和开关设置下能实际输出的数据。控制心跳、所有字段都无效的数据包，以及仅长度符合要求的数据包，都不会使数据源被选中。
+可用数据是指在 `Stale` 时限内到达、并且在当前输出开关下能实际输出的数据。控制心跳、所有字段都无效的数据包，以及仅长度符合要求的数据包，都不会使数据源被选中。
 
 数据源一经选定，在本次运行期间保持不变，即使另一方随后开始发送数据也不会切换。模块不会同时使用两个数据源，例如眼动取自 Bridge、表情取自 Streaming。
 
@@ -136,47 +132,23 @@ Streaming 接收器处理 PICO Connect 等发送端的串流格式。端口固�
 
 六个字段必须全部提供。任一字段缺失或越界时，整个 `HeaderProfile` 按 `null` 处理并记录日志，接收回到上文的默认判定，29763 端口的接收不受影响。
 
-配置完整的 `HeaderProfile` 后，29765 数据报除需满足长度与 `trackingType` 条件外，六个头部字段还必须与配置完全一致。模块不会重组分包数据。头部字段的偏移请参阅[协议参考](protocol_zh.md#串流带头格式-streamingheader16)。
+配置完整的 `HeaderProfile` 后，29765 数据报除需满足长度与 `trackingType` 条件外，六个头部字段还必须与配置完全一致。模块不会重组分包数据。头部字段的偏移请参阅[协议参考](protocol_zh.md#streamingheader16-头部)。
 
-## 眼动策略与增益
+## 眼动解析与增益
 
-`EyePolicy` 决定视线来源：
+视线与眼睑始终由表情模型推算，发送端的原生眼动包只用于读取实测瞳孔直径。
 
-| 取值 | 视线 |
-|---|---|
-| `NativePreferred` | 按协议固定来源：Bridge 使用原生视线，串流格式使用 `EyeLook` 表情推算 |
-| `LegacyNative` | 仅使用原生视线（分眼或合并），不回退到表情推算 |
-| `BlendshapeOnly` | 仅使用由 `EyeLook` 表情推算的视线 |
+左眼 X 为 `EyeLookIn − EyeLookOut`，右眼 X 为 `EyeLookOut − EyeLookIn`，双眼 Y 均为 `EyeLookUp − EyeLookDown`，来源标记为 `blendshape-derived`。每只眼都需要自身的 `EyeLookIn`、`EyeLookOut`、`EyeLookUp`、`EyeLookDown` 四个形态；这只是由表情差值得到的近似，不包含辐辏信息。
 
-`OpennessPolicy` 决定每眼的睁眼度。VRCFT 以 `EyeClosed = 1 − Openness` 计算闭眼程度：
+睁眼度取本眼的 `1 - EyeBlink`，来源标记为 `blendshape-blink`。VRCFT 以 `EyeClosed = 1 − Openness` 计算闭眼程度。
 
-| 取值 | 睁眼度 |
-|---|---|
-| `Auto`（默认） | 普通模式只取 `1 − EyeBlink`；已确认增强模式只取本眼原生 Openness |
-| `BlendshapeOnly` | 始终取 `1 − EyeBlink` |
-| `NativePreferred` | 本眼原生 Openness |
+缺帧、过期或无效时保持本眼最近有效值；尚无有效值前，视线回正、睁眼度为 1。可选的超时中性化由 [Stale](#stale) 设置。
 
-默认配置：
+独立表情 `X` 包为每只眼携带质量状态。状态为 0 时只保持本眼先前的输出；-1 表示未知，仍使用所提供的数据。某眼的首个 `X` 样本会替换此前保持的普通值，而不是继承它；此后该眼保持自己最近的有效值。
 
-```json
-{
-  "ConfigVersion": 1,
-  "EyePolicy": "NativePreferred",
-  "OpennessPolicy": "Auto"
-}
-```
+瞳孔直径来自原生眼动包：数据中有有效的实测值且在 1–12 mm 内时使用实测值，失效时默认保持。尚无实测值、输出重置后，或启用超时中性化且测量已过期时，使用 `Stale.NeutralPupilMillimeters`。模块不会根据睁眼度等其他数据估算瞳孔。
 
-`Auto` 根据 Bridge 的模式公告识别增强模式。未收到公告或公告过期时使用 Blink。配置中省略 `OpennessPolicy` 时采用 `Auto`。
-
-选定来源缺帧、过期或无效时不临时换源，默认保持本眼最近有效睁眼度；尚无有效值时为 1。可选的超时中性化由 [Stale](#stale) 设置。
-
-原生视线按能力固定来源：BridgeSplit 在头显公告增强模式及分眼独立能力时使用本眼视线；DaemonLegacy536 启用 `LegacyPerEyeGaze` 时同样使用本眼视线。其余情况使用合并视线。选定来源失效时不切换，保持与回正时限由 [Stale](#stale) 设置。能力公告的判定请参阅[协议参考](protocol_zh.md#bridge-控制与能力公告)。
-
-由表情推算视线时，左眼 X 为 `EyeLookIn − EyeLookOut`，右眼 X 为 `EyeLookOut − EyeLookIn`，双眼 Y 均为 `EyeLookUp − EyeLookDown`。这只是由表情差值得到的近似，不包含辐辏信息。
-
-瞳孔直径在三种策略下处理相同：数据中有有效的实测值且在 1–12 mm 内时使用实测值，失效时默认保持。尚无实测值、输出重置后，或启用超时中性化且测量已过期时，使用 `Stale.NeutralPupilMillimeters`。模块不会根据睁眼度等其他数据估算瞳孔。
-
-`Source=Auto` 时，模块按这两种策略判断眼动字段是否可用，并据此选择数据源。
+`Source=Auto` 时，原生眼动包含有效实测瞳孔，或形态数据可产生表情／可推算视线与睁眼度，都会使数据源被视为可用。
 
 `EyeGain` 的六个字段分别作用于左右眼视线的 X、Y 轴和睁眼度：
 
@@ -189,66 +161,20 @@ Streaming 接收器处理 PICO Connect 等发送端的串流格式。端口固�
 
 `LeftOpenness` 与 `RightOpenness` 乘在睁眼度上。增益大于 1 时，限幅可能使轻微闭眼仍输出睁眼状态；排查闭眼响应时建议保持为 1。
 
-## 视线平滑
-
-`GazeSmoothing.Enabled` 默认为 `true`，省略整个配置节时也启用下表的按模式默认参数。需要关闭时，在配置根对象加入 `"GazeSmoothing": { "Enabled": false }`。显式保存的旧值保持优先；省略的字段采用本版默认值。配置修改在模块下次初始化时生效。
-
-要恢复本节的全部默认值，先备份配置，再删除 `GazeSmoothing` 节并重启 VRCFT。
-
-滤波器在 `EyeGain` 之前分别处理左右眼的原生 gaze XY，根据眼睑状态连续调整平滑强度：睁眼时保留更多细小变化，半睁时加强抑抖。滤波越强，转眼跟随通常越慢。表情推算视线沿用原有输出路径；此节参数只控制 gaze，眼睑输出由 `OpennessPolicy` 控制。默认参数的验证情况见 [README 的兼容性说明](../README_zh.md#兼容性)。
-
-| 字段 | 类型 | 默认值 | 取值 | 含义 |
-|---|---|---|---|---|
-| `Enabled` | 布尔 | `true` | `true` / `false` | 是否启用平滑 |
-| `LightCutoffHz` | 数值 | `100` | 0.01–1000 | 眼睑权重为 0 时的最低截止频率；越大越跟手 |
-| `HeavyCutoffHz` | 数值 | `4` | 0.01–1000，≤ `LightCutoffHz` | 权重为 1 时的最低截止频率；越小平滑越强 |
-| `Beta` | 数值 | `1` | 0–100 | 按平滑后的 XY 导数范数提高截止频率的系数 |
-| `DualLightCutoffHz` | 数值或 `null` | `250` | 0.01–1000，≥ `HeavyCutoffHz` | dual 逐眼视线轻档；省略时使用 250，显式 `null` 时继承 `LightCutoffHz` |
-| `DualBeta` | 数值或 `null` | `8` | 0–100 | dual 逐眼视线速度系数；省略时使用 8，显式 `null` 时继承 `Beta` |
-| `DerivativeCutoffHz` | 数值 | `1` | 0.01–1000 | 输入导数的平滑截止频率 |
-| `BlinkLow` | 数值 | `0.30` | 0–1，< `BlinkHigh` | 合并视线：权重为 0 的平滑 Blink 值 |
-| `BlinkHigh` | 数值 | `0.60` | 0–1，> `BlinkLow` | 合并视线：权重为 1 的平滑 Blink 值 |
-| `OpennessHigh` | 数值 | `0.80` | 0–1，> `OpennessLow` | 分眼视线：权重为 0 的平滑睁眼度 |
-| `OpennessLow` | 数值 | `0.45` | 0–1，< `OpennessHigh` | 分眼视线：权重为 1 的平滑睁眼度 |
-| `LidConfirmMs` | 整数 | `350` | 0–2000 | 确认眼睑闭合程度的滚动源时间窗口；0 表示关闭确认 |
-| `LidSmoothingMs` | 整数 | `150` | 0–5000 | 确认值的指数平滑时间常数，闭合和睁开相同；0 表示直接用确认值 |
-| `ResetGapMs` | 整数 | `50` | 1–5000 | 相邻有效观测间隔超过此值时重新初始化视线并清零导数 |
-
-### 调整强度
-
-- 提高轻档截止频率，可以保留更多睁眼小变化；降低重档截止频率，可以加强半睁抑抖。
-- 提高 `Beta` 会在快速转眼时减轻滤波、加快跟随，也会放过更多快速波动。
-- 普通模式调整 `BlinkLow/High`；dual 调整 `OpennessHigh/Low`。两个端点之间连续过渡到重档，端点收得越近，强度变化越集中。
-
-普通模式使用 `LightCutoffHz` 和 `Beta`，dual 使用 `DualLightCutoffHz` 和 `DualBeta`。dual 字段省略时采用表中默认值，显式设为 `null` 时继承对应普通值。重档、导数截止及时间参数由两种模式共用。
-
-### 处理顺序
-
-1. **读取眼睑值。**普通模式取近期有效的 `max(EyeBlinkL, EyeBlinkR)`；dual 取本眼同帧有效 openness。普通模式的 Blink 必须来自同一会话，满足 `Stale.FaceMs`，且与眼追帧的源时间差不超过 `min(250 ms, Stale.FaceMs)`。
-2. **确认闭合程度。**在最近 `LidConfirmMs` 中取最睁开的值：Blink 取最小值，openness 取最大值。窗口保留睁眼历史时，短眨眼不会触发重滤波。设为 0 可跳过确认。
-3. **平滑眼睑并计算强度。**确认值经 `LidSmoothingMs` 指数平滑得到 `s`，再映射为 `q`：普通模式为 `(s-BlinkLow)/(BlinkHigh-BlinkLow)`，dual 为 `(s-OpennessHigh)/(OpennessLow-OpennessHigh)`。将 `q` 限制到 0–1 后，权重为 `q*q*(3-2*q)`。
-4. **平滑视线。**以当前模式的轻档 `light` 和速度系数 `beta` 计算截止频率：`light * (HeavyCutoffHz/light)^weight + beta * norm(derivativeXY)`，再使用 OneEuro 的 `alpha=1/(1+1/(2*pi*cutoff*dt))` 更新 gaze。
-
-眼睑平滑以首个有效值初始化，后续更新为 `s += (1-exp(-deltaMs/LidSmoothingMs))*(confirmed-s)`。眼睑无效时保持已有状态；gaze 无效但眼睑有效时，仍更新眼睑状态。确认窗口不足指定时长时使用已有样本，睁眼观测立即影响确认值。
-
-计时使用实际观察到的帧内源时间戳。重复或乱序帧被跳过，gaze 无效时保持输出。有效 gaze 间隔超过 `ResetGapMs` 后，直接采用新输入并清零导数，眼睑状态继续保留。来源、会话或模式切换会完整重置滤波；连接超时时的输出保持由 `Stale.NeutralizeOnTimeout` 决定。旧 536 格式没有可靠源时钟，绕过该滤波。
-
-本节出现格式错误、未知或重复字段、数值越界或端点顺序错误时，平滑关闭并记录诊断。配置工具使用相同校验；旧模块配置导入显式关闭新增平滑。
-
 ## Stale
 
 | 字段 | 类型 | 默认值 | 取值 | 说明 |
 |---|---|---|---|---|
 | `NeutralizeOnTimeout` | 布尔值 | `false` | `true` / `false` | 过期后是否输出中性值；关闭时保留最近输出 |
-| `EyeMs` | 整数 | `250` | 1–5000 | 原生眼动数据的有效时长（ms） |
+| `EyeMs` | 整数 | `250` | 1–5000 | 原生眼动数据中实测瞳孔的有效时长（ms） |
 | `FaceMs` | 整数 | `250` | 1–5000 | 表情数据的有效时长（ms） |
 | `NeutralPupilMillimeters` | 数值 | `3.5` | 1–10 | 无有效实测值时输出的瞳孔直径（mm） |
 
 越界时回退到默认值。时长以本机收到数据的时间计算，不使用发送端时间戳。
 
-`NeutralizeOnTimeout` 默认为 `false`，已有配置省略该字段时也保持关闭。视线、睁眼度和瞳孔测量过期后保留最近有效值，表情过期后保留最近输出。设为 `true` 时，表情超过 `FaceMs` 后归零；原生视线与睁眼度超过 `EyeMs`、表情推算值超过 `FaceMs` 后，视线回正、睁眼度为 1；瞳孔测量超过 `EyeMs` 后改用 `NeutralPupilMillimeters`。
+`NeutralizeOnTimeout` 默认为 `false`，已有配置省略该字段时也保持关闭。视线、睁眼度和瞳孔测量过期后保留最近有效值，表情过期后保留最近输出。设为 `true` 时，表情超过 `FaceMs` 后归零；视线与睁眼度超过 `FaceMs` 后回正、睁眼度为 1；瞳孔测量超过 `EyeMs` 后改用 `NeutralPupilMillimeters`。
 
-这些新鲜度时限仍用于选源和接纳输入，过期输入仍会重置后处理的时间状态。关闭中性化时，连接及模式公告超时保留输出；新会话、换来源或模式、停用及退出会重置输出。新表情帧明确标为无效的区域仍会清零对应映射通道，这与超时处理不同。
+这些新鲜度时限仍用于选源和接纳输入，过期输入仍会重置后处理的时间状态。关闭中性化时，连接及模式公告超时保留输出；新会话、换来源或模式、停用及退出会重置输出。普通表情帧明确标为无效的区域会清零对应映射通道。独立 `X` 帧中，质量状态为 0 的眼则保持自身独立历史，并受超时中性化设置约束；本眼尚无有效独立样本时，表情通道为零、视线回正、睁眼度为 1。
 
 日志中的 `MissingFrames` 状态固定在数据中断 250 ms 后出现，不受本节设置影响。
 
@@ -256,10 +182,9 @@ Streaming 接收器处理 PICO Connect 等发送端的串流格式。端口固�
 
 | 字段 | 默认值 | 作用 |
 |---|---|---|
-| `LegacyPerEyeGaze` | `false` | 仅对 DaemonLegacy536 生效。启用后，536 字节格式中的左右眼视线按独立分眼数据使用；关闭时只使用其合并视线 |
 | `LegacyExpressionCeiling` | `false` | 启用后，表情输出的上限为 0.99；关闭时为 1。不影响视线与睁眼度 |
 
-这两个开关用于让迁移后的行为接近旧模块。迁移工具在 `bridge-upstream-0ab66348` 下启用前者，在 `saft-ab500f03` 下启用后者。新安装时无需启用。
+该开关用于让迁移后的行为接近旧模块。迁移工具在 `saft-ab500f03` 下启用。新安装时无需启用。
 
 ## 后处理
 
@@ -273,7 +198,7 @@ Streaming 接收器处理 PICO Connect 等发送端的串流格式。端口固�
 | `DefaultGain` | 数值 | `1` | 0–10 | `Gains` 中未列出的通道使用的增益 |
 | `Gains` | 对象 | `EyeWideLeft`、`EyeWideRight` 为 2；`EyeSquintLeft`、`EyeSquintRight`、`JawOpen` 为 1 | 每项 0–10 | 按通道设置的增益 |
 
-在配置中写出 `Gains` 时，它会整体替换默认的通道列表，未列出的通道（包括 EyeWide）改用 `DefaultGain`。`Gains` 的键为表情通道名，匹配时不区分大小写；可用通道请参阅[后处理参考](postprocessing_zh.md#channelgain-支持的通道)。键无法识别、重复（不区分大小写）或数值越界时，`ChannelGain` 整条规则被禁用。禁用 `ChannelGain` 后，所有通道均按 1 输出，默认的 EyeWide 2 倍补偿也随之取消。
+在配置中写出 `Gains` 时，它会整体替换默认的通道列表，未列出的通道（包括 EyeWide）改用 `DefaultGain`。`Gains` 的键为表情通道名，匹配时不区分大小写；可用通道请参阅[后处理参考](postprocessing_zh.md#可用通道)。键无法识别、重复（不区分大小写）或数值越界时，`ChannelGain` 整条规则被禁用。禁用 `ChannelGain` 后，所有通道均按 1 输出，默认的 EyeWide 2 倍补偿也随之取消。
 
 其余 13 条规则默认关闭。各规则的参数、范围与执行顺序请参阅[后处理参考](postprocessing_zh.md)。
 
@@ -318,14 +243,14 @@ IP 地址与绑定地址只接受 IPv4 字面量，不支持主机名和 IPv6。
 
 | 来源版本 | 旧配置文件 | 迁移后的主要设置 |
 |---|---|---|
-| `bridge-current-0.1-beta-split-fix1` | 分流改版 PicoFacialDataModule 的 `PicoFacialDataModule.json` | `Source=Bridge`、`Bridge.Protocol=BridgeSplit`、`EyePolicy=NativePreferred`；`ShapeGain` 转为 `ChannelGain` |
-| `bridge-upstream-0ab66348` | 上游 PicoFacialDataModule 的 `PicoFacialDataModule.json` | `Source=Bridge`、`Bridge.Protocol=DaemonLegacy536`、`EyePolicy=LegacyNative`、`LegacyPerEyeGaze=true` |
-| `saft-ab500f03` | SAFT 的 `PicoModuleConfig.json` | `Source=Streaming`、`Streaming.Protocol=StreamingHeader16`、`EyePolicy=BlendshapeOnly`、`LegacyExpressionCeiling=true`；`scales` 分别转为 `ChannelGain` 与 `EyeGain` |
-| `pike-c026aa4` | pike 分支的 `config.ini` | `Source=Auto`、`EyePolicy=BlendshapeOnly`；`eye_gain` 转为 `EyeGain`，`mode` 展开为后处理规则 |
+| `bridge-current-0.1-beta-split-fix1` | 分流改版 PicoFacialDataModule 的 `PicoFacialDataModule.json` | `Source=Bridge`、`Bridge.Protocol=BridgeSplit`；`ShapeGain` 转为 `ChannelGain` |
+| `bridge-upstream-0ab66348` | 上游 PicoFacialDataModule 的 `PicoFacialDataModule.json` | `Source=Bridge`、`Bridge.Protocol=DaemonLegacy536` |
+| `saft-ab500f03` | SAFT 的 `PicoModuleConfig.json` | `Source=Streaming`、`Streaming.Protocol=StreamingHeader16`、`LegacyExpressionCeiling=true`；`scales` 分别转为 `ChannelGain` 与 `EyeGain` |
+| `pike-c026aa4` | pike 分支的 `config.ini` | `Source=Auto`；`eye_gain` 转为 `EyeGain`，`mode` 展开为后处理规则 |
 
 两种 Bridge 来源都会迁移 `DisableEyeTracking`、`DisableFaceTracking` 和 `IP`；pike 的 `eye-tracking` 与 `expression-tracking` 对应这两个禁用开关。
 
-迁移后的 `OpennessPolicy` 为 `Auto`，按当前模块的普通／增强模式策略选择睁眼度来源，差异记录在迁移报告中。
+旧配置中的视线与睁眼度来源选择不会导入；迁移结果使用[眼动解析与增益](#眼动解析与增益)所述的表情来源行为，差异记录在迁移报告中。
 
 迁移结果与新安装的默认配置有以下区别：
 

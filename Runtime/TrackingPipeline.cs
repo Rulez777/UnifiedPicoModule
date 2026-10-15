@@ -13,6 +13,8 @@ public sealed class TrackingPipeline
     private SourceKind? source;
     private long generation = -1, outputGeneration = -1, faceSequence = -1;
     private ExpressionFrame faceOutput = new();
+    private ExpressionFrame independentEyeOutput = new();
+    private double leftExpressionArrival, rightExpressionArrival;
     private bool hadFreshFace;
     private double lastProcessedFaceArrival;
 
@@ -26,8 +28,11 @@ public sealed class TrackingPipeline
     {
         // Connection timeouts can discard transport caches without neutralizing held output.
         // Explicit source/session changes and lifecycle stops still clear output state.
-        if (!preserveOutput) { eyes.Reset(); faceOutput = new(); }
-        else eyes.ResetSmoothing();
+        if (!preserveOutput)
+        {
+            eyes.Reset(); faceOutput = new(); independentEyeOutput = new();
+            leftExpressionArrival = rightExpressionArrival = 0;
+        }
         processor.Reset(); faceSequence = -1;
         source = null; generation = outputGeneration = -1; hadFreshFace = false; lastProcessedFaceArrival = 0;
     }
@@ -55,7 +60,14 @@ public sealed class TrackingPipeline
                     (raw.Arrival - lastProcessedFaceArrival) * 1000 > config.Stale.FaceMs)) processor.Reset();
                 var filtered = raw.WithValidity(!config.DisableEyeTracking, !config.DisableFaceTracking);
                 // Temporal rules use actual monotonic reception time, not a delayed SDK poll.
-                faceOutput = processor.Process(filtered, NeutralFaceMapper.Map(filtered), raw.Arrival);
+                var processed = processor.Process(filtered, NeutralFaceMapper.Map(filtered), raw.Arrival);
+                if (filtered.IndependentEyes is not null && !config.DisableEyeTracking)
+                    KeepIndependentExpressions(filtered, processed);
+                else
+                {
+                    independentEyeOutput = new(); leftExpressionArrival = rightExpressionArrival = 0;
+                }
+                faceOutput = processed;
                 faceSequence = snapshot.FaceSequence;
                 lastProcessedFaceArrival = raw.Arrival;
             }
@@ -69,10 +81,28 @@ public sealed class TrackingPipeline
             if (config.Stale.NeutralizeOnTimeout) faceOutput = new();
         }
         var (left, right) = eyes.Resolve(snapshot, now);
-        var output = faceOutput.Clone(); output.Clamp(config.LegacyExpressionCeiling ? 0.99f : 1);
+        var output = faceOutput.Clone();
+        if (snapshot.Face?.IndependentEyes is not null && config.Stale.NeutralizeOnTimeout)
+            foreach (var channel in Enum.GetValues<ExpressionChannel>())
+                if (ExpressionFrame.IsEye(channel) && !MonotonicClock.Fresh(
+                    ExpressionFrame.IsLeftEye(channel) ? leftExpressionArrival : rightExpressionArrival, now, config.Stale.FaceMs))
+                    output[channel] = 0;
+        output.Clamp(config.LegacyExpressionCeiling ? 0.99f : 1);
         return new(output, left, right);
+    }
+    private void KeepIndependentExpressions(RawFace raw, ExpressionFrame output)
+    {
+        bool leftAvailable = raw.EyeAvailable(true), rightAvailable = raw.EyeAvailable(false);
+        if (leftAvailable) leftExpressionArrival = raw.Arrival;
+        if (rightAvailable) rightExpressionArrival = raw.Arrival;
+        foreach (var channel in Enum.GetValues<ExpressionChannel>())
+        {
+            if (!ExpressionFrame.IsEye(channel)) continue;
+            bool available = ExpressionFrame.IsLeftEye(channel) ? leftAvailable : rightAvailable;
+            if (available) independentEyeOutput[channel] = output[channel];
+            else output[channel] = independentEyeOutput[channel];
+        }
     }
     public TrackingOutput Neutral => new(new(), new(PupilMillimeters: config.Stale.NeutralPupilMillimeters),
         new(PupilMillimeters: config.Stale.NeutralPupilMillimeters));
-    public (double Left, double Right)? GazeSmoothingWeights => eyes.SmoothingWeights;
 }

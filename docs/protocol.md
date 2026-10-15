@@ -4,13 +4,13 @@ English | [简体中文](protocol_zh.md) · [README](../README.md)
 
 This document describes the four UDP wire formats the module can decode and how the module connects to each sender. The source code in `Protocol/`, `Transport/`, `Mapping/` and `Runtime/` is authoritative; it is not included in the module ZIP. For the full list of configuration fields, see the [configuration reference](configuration.md).
 
-The module implements these formats independently and does not copy the receivers, structures or algorithms of SAFT or lonelyicer. For sources and licensing, see the [third-party notices](../THIRD_PARTY_NOTICES.md).
+The module implements these formats independently. For sources and licensing, see the [third-party notices](../THIRD_PARTY_NOTICES.md).
 
 ## Overview
 
 | Format (`InputProtocol`) | Sender | Local port | Datagram length | Content |
 |---|---|---:|---|---|
-| `BridgeSplit` | PicoFacialBridge 0.3.0 or later | 9030 | 83, 95, 151 or 227 | 19-byte common header followed by the subscribed channels |
+| `BridgeSplit` | PicoFacialBridge 0.3.0 or later | 9030 | 83, 95, 151, 227; extension: 111 or 243 | 19-byte common header followed by subscribed channels; `X` adds independent-eye data |
 | `DaemonLegacy536` | PicoFacialDataDaemon | 9030 | 536 | 384-byte face prefix and 152-byte eye prefix |
 | `StreamingHeader16` | PICO Connect (legacy face tracking protocol) | 29765 | At least 908 | 16-byte header and 892-byte body; trailing bytes are ignored |
 | `StreamingBodyOnly` | Headerless streaming format | 29763 | 892 | Body only |
@@ -26,7 +26,9 @@ General conventions:
 
 On 2026-10-01, `BridgeSplit` passed a first round of hardware acceptance on a PICO 4 Pro, covering discovery, mode announcements, subscription and acknowledgement, all four effective channel combinations, epoch agreement, cache clearing on changes, return to neutral when data stops, and recovery after an application restart. On the same day, the 29765 path passed acceptance with PICO Connect 10.6.6 (`faceTrackingTransferProtocol=2`). The measured datagrams were 912 bytes long (a 16-byte header and an 896-byte body).
 
-The following have not been verified: strict `HeaderProfile` mode, the 29763 path, other senders and versions, `DaemonLegacy536`, PicoFacialBridge normal mode, recovery after a full headset reboot, and long-term stability.
+After a full headset reboot, starting Bridge and reconnecting the PC has also been verified. The following have not been verified: strict `HeaderProfile` mode, the 29763 path, other senders and versions, `DaemonLegacy536`, PicoFacialBridge normal mode, and long-term stability.
+
+The independent-expression `X` extension (PicoFacialBridge 0.4.0 with PicoET-Enhance 2.2.0) has been verified against official VRCFT 5.4.5. Eye images recorded earlier were replayed through native eye inference on the headset, and the PC received `E` and dual-channel `X` packets whose values matched the source outputs, with gaze and eyelids derived from expressions and each eye's own validity. The recording was about 23.7 Hz and replayed in an accelerated loop, so this shows inference throughput and transport rather than a real 90 Hz camera sequence. Long live-camera use and single-eye quality failure (state 0) have not been verified.
 
 ## Bridge connection flow
 
@@ -134,22 +136,41 @@ The epoch is based on the headset's monotonic uptime and may decrease after a fu
 
 | Offset | Size | Field |
 |---:|---:|---|
-| 0 | 1 | Tag: ASCII `E`, `A` or `F` |
+| 0 | 1 | Tag: ASCII `E`, `A`, `F` or `X` |
 | 1 | 1 | Effective channel mask, 1 to 3 |
 | 2 | 1 | Morphology validity: eye is 1, face is 2; must be a subset of the mask |
 | 3 | 8 | Epoch, positive signed int64 |
-| 11 | 8 | Source timestamp, positive signed int64; `A` and `F` use the face data's source time |
+| 11 | 8 | Source timestamp, positive signed int64; `A`, `F` and `X` use the face data's source time |
 
 ### Datagram types
 
 | Tag | Length | Effective mask | Content |
 |---|---:|---|---|
-| `E` | 83 | Includes eye (1 or 3) | Native eye data; morphology validity must be 0 |
+| `E` | 83 | Includes eye (1 or 3) | Native eye data; the module outputs its measured pupil diameter |
 | `A` | 95 | Eye only (1) | 19 eye-region shapes |
 | `F` | 151 | Face only (2) | 33 non-eye shapes |
 | `F` | 227 | Eye and face (3) | All 52 shapes |
+| `X` | 111 | Eye only (1) | Same 19 eye-region shapes as `A`, followed by a 16-byte independent-eye extension |
+| `X` | 243 | Eye and face (3) | Same 52 shapes as `F`, followed by that extension |
 
 The datagrams sent for each mask are: `E` and `A` for eye only; only `F` (151 bytes) for face only; `E` and `F` (227 bytes) for both, without `A`.
+
+An independent-expression sender replaces `A` or the 227-byte `F` with `X`. Face-only transmission stays `F`; native `E` packets are unchanged.
+
+### `X`: independent eye expressions
+
+The extension begins at byte 95 for mask 1, or byte 227 for mask 3:
+
+| Relative offset | Size | Field |
+|---:|---:|---|
+| 0 | 4 | uint32 version, exactly 1 |
+| 4 | 4 | float32 filtered right inner brow; standard slot 3 is the left inner brow |
+| 8 | 4 | int32 left quality state: -1 unknown, 0 unusable, 1 usable |
+| 12 | 4 | int32 right quality state, same values |
+
+All shapes and the right inner brow must be finite. Other versions, states, masks or lengths are rejected. Eye shapes use their own side's state rather than the combined header eye-valid bit; -1 retains the data, without being treated as a known good classification. Non-eye shapes still use the header face-valid bit.
+
+Gaze and eyelids are expression-derived for `X` just as for ordinary packets; the quality states decide each eye's availability. An unusable eye holds its own last output, subject to the configured timeout behavior, never the other eye's values. Inner-brow separation is applied per side, and cross-eye BlinkAsymmetry is skipped. Extension and shapes share one epoch/timestamp and one face-sequence update. This extension requires support at both endpoints; older decoders reject `X`.
 
 ### `E`: native eye data (83 bytes)
 
@@ -160,7 +181,7 @@ The datagrams sent for each mask are: `E` and `A` for eye only; only `F` (151 by
 | 67 / 71 | 4 each | Left and right eye openness |
 | 75 / 79 | 4 each | Left and right raw pupil values |
 
-Only the status bits `0x002`, `0x004`, `0x100` and `0x800` are allowed; any other bit causes the whole datagram to be discarded. All floats from offset 31 onward must be finite. The meaning of the status bits is described in [Status bits and units](#status-bits-and-units).
+Only the status bits `0x002`, `0x004`, `0x100` and `0x800` are allowed; any other bit causes the whole datagram to be discarded. All floats from offset 31 onward must be finite. The meaning of the status bits is described in [Status bits and units](#status-bits-and-units). The module consumes only the pupil diameter from this datagram; gaze and openness come from the expression shapes.
 
 In normal mode, Bridge clears the per-eye gaze validity bits and keeps only the combined gaze. Per-eye gaze is kept only in enhanced mode with `plugin=dual`.
 
@@ -212,7 +233,7 @@ Eye-region shapes (the 19 slots in the table above) are governed by the eye vali
 
 Fields not listed are not mapped. A non-finite shape value marks that slot as absent without discarding the datagram. The eye section has no reliable source timestamp and is ordered by arrival.
 
-This format carries no per-eye capability declaration. The module uses its per-eye gaze only when `LegacyPerEyeGaze=true` is set explicitly. This option exists for compatibility with earlier modules and does not imply real vergence.
+This format carries no per-eye capability declaration. The module reads its measured pupil diameter; gaze and openness come from the expression shapes.
 
 ## Streaming formats
 
@@ -280,56 +301,31 @@ These apply to the `E` datagram of `BridgeSplit` and to the eye section of `Daem
 | `0x100` | Per eye | Per-eye gaze valid | All three vector components are finite |
 | `0x800` | Per eye | Pupil diameter valid | Raw value divided by 10 gives millimeters; the result is positive and finite |
 
-Gaze takes the vector's X and Y components directly, without normalization.
+Native gaze vectors carry their direction in the X and Y components, without normalization; the module does not output them.
 
-### Eye policy
+### Gaze and openness derivation
 
-`EyePolicy` selects the gaze source:
-
-| Policy | Gaze |
-|---|---|
-| `NativePreferred` (default) | Selected by protocol; see [Eye policy and gain](configuration.md#eye-policy-and-gain) |
-| `LegacyNative` | Native gaze only, never derived |
-| `BlendshapeOnly` | Derived from shapes only |
-
-`OpennessPolicy` selects the openness source:
-
-| Policy | Openness | Origin |
-|---|---|---|
-| `Auto` (default) | Normal mode: only `1 - EyeBlink`. Confirmed enhanced mode: only that eye's native Openness | `native-openness` or `blendshape-blink`, selected by mode |
-| `BlendshapeOnly` | Always `1 - EyeBlink` | `blendshape-blink` |
-| `NativePreferred` | Only that eye's native Openness, without Blink fallback | `native-openness` |
-
-`Auto` uses the enhanced-mode policy when the mode announcement is current and the internal capability state has `ModeKnown=true` and `Enhanced=true`; otherwise it uses Blink. Native values and Blink are checked against their respective validity bits and reception ages. An unavailable selected source retains that eye's existing value rather than substituting the other source. Before any valid value, or after expiry with timeout neutralization enabled, the origin is `neutral`.
-
-VRCFT outputs eyelid closure as `EyeClosed = 1 - Openness`. Gaze and openness origins are logged separately; for holding and output after invalidity, see [Timestamps, expiry and neutral output](#timestamps-expiry-and-neutral-output).
-
-When the per-eye conditions are met, the native gaze origin is `native-per-eye` (that eye's own gaze); otherwise it is `native-combined` (combined gaze).
-
-Deriving gaze from shapes requires all four of the eye's `EyeLookIn`, `EyeLookOut`, `EyeLookUp` and `EyeLookDown` shapes, and the origin is `blendshape-derived`:
+Gaze is always derived from the `EyeLook` shapes and openness from `1 - EyeBlink`. Deriving gaze requires all four of the eye's `EyeLookIn`, `EyeLookOut`, `EyeLookUp` and `EyeLookDown` shapes, and the origin is `blendshape-derived`:
 
 - left X = `EyeLookInL - EyeLookOutL`, right X = `EyeLookOutR - EyeLookInR`;
 - Y = `EyeLookUp - EyeLookDown`.
 
+Openness is `1 - EyeBlink` of the same eye, with origin `blendshape-blink`. VRCFT outputs eyelid closure as `EyeClosed = 1 - Openness`.
+
+A missing or invalid sample retains that eye's last valid value rather than substituting another source. Before any valid value, or after expiry with timeout neutralization enabled, the origin is `neutral`. For holding and output after invalidity, see [Timestamps, expiry and neutral output](#timestamps-expiry-and-neutral-output).
+
 The result is multiplied by the corresponding `EyeGain` value; gaze is then limited to -1 to 1 and openness to 0 to 1.
-
-### Per-eye conditions
-
-Per-eye gaze is used only when one of the following holds:
-
-- the protocol is `BridgeSplit`, the mode announcement is current, enhanced mode is active, and `plugin=dual`;
-- the protocol is `DaemonLegacy536` and `LegacyPerEyeGaze=true`.
 
 ### Pupil
 
-A pupil diameter is used only when its status bit is valid and the converted value is between 1 and 12 mm, regardless of the eye policy. The last measurement is retained during invalidity by default. Before any measurement, after an output reset, or after expiry with timeout neutralization enabled, the output is `Stale.NeutralPupilMillimeters` (3.5 mm by default), shown as `estimated` in the log. The module does not derive pupil size from openness or shapes.
+A pupil diameter is used only when its status bit is valid, the converted value is between 1 and 12 mm, and the receiving packet is fresh. The last measurement is retained during invalidity by default. Before any measurement, after an output reset, or after expiry with timeout neutralization enabled, the output is `Stale.NeutralPupilMillimeters` (3.5 mm by default), shown as `estimated` in the log. The module does not derive pupil size from openness or shapes.
 
 ## Timestamps, expiry and neutral output
 
 Timestamp rules:
 
 - A signed int64 source timestamp is treated as a reliable clock only when positive. Zero or negative values are treated as missing timestamps, and arrival order applies.
-- Within one Generation, eye and face timestamps are checked separately, and duplicate or backward samples are discarded. `A` and `F` share the face timestamp sequence.
+- Within one Generation, eye and face timestamps are checked separately, and duplicate or backward samples are discarded. `A`, `F` and `X` share the face timestamp sequence.
 - Freshness is based on the arrival time measured with the local monotonic clock. Control messages do not extend the freshness of data.
 
 Eye and face data arrive, are deduplicated and expire independently. The module does not interpolate or synthesize samples. A new eye sample does not cause cached expressions to be processed again.
@@ -341,8 +337,7 @@ Output after expiry with `Stale.NeutralizeOnTimeout=true`:
 | Data | Expiry threshold | Output after expiry |
 |---|---|---|
 | Expressions | `Stale.FaceMs`, 250 ms by default | All channels return to zero; post-processing timing state is reset |
-| Native gaze and openness | `Stale.EyeMs`, 250 ms by default | Gaze returns to center; openness is 1 |
-| Derived gaze and openness | `Stale.FaceMs`, 250 ms by default | Gaze returns to center; openness is 1 |
+| Gaze and openness | `Stale.FaceMs`, 250 ms by default | Gaze returns to center; openness is 1 |
 | Pupil | `Stale.EyeMs`, 250 ms by default | `Stale.NeutralPupilMillimeters` |
 
 When no source is selected, the output is fully neutral. A new session, source or mode resets eye resolution and post-processing state. A Generation change caused solely by a connection or mode-announcement timeout retains eye and expression output when `NeutralizeOnTimeout=false`, while transport caches and post-processing timing state are still cleared. Module deactivation, teardown and update errors reset output.
@@ -355,7 +350,7 @@ Expression shapes are mapped to VRCFT expression channels through a fixed table,
 
 A source in the `Faulted` or `Stopped` state is not usable. Any other source is usable when one of the following holds:
 
-- eye tracking is enabled, native eye data is within its expiry limit, and it contains a valid pupil or gaze / openness fields allowed by `EyePolicy` and `OpennessPolicy`;
+- eye tracking is enabled, native eye data is within its expiry limit, and it contains a valid measured pupil;
 - fresh shape data contains mappable expressions, or, with eye tracking enabled, can be used to derive openness or gaze.
 
 In `Auto` mode, only Bridge can be selected during the first `AutoSelectionWindowMs` (1500 ms by default) after startup. After that, the first source to become usable is selected. When Bridge and streaming are both usable, Bridge is preferred.

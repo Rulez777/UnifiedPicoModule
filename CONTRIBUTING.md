@@ -45,7 +45,7 @@ The directories have the following responsibilities:
 Changes must observe the following constraints:
 
 - Only the `Sdk` directory may reference VRCFaceTracking. The other layers do not depend on VRCFT, and the configuration tool compiles only the sources in `Core` and `Configuration`.
-- Protocol parsing, source selection, eye policy and post-processing are independent of one another. Changing one of them should not alter the behavior of the others.
+- Protocol parsing, source selection, eye resolution (gaze, openness and pupil) and post-processing are independent of one another. Changing one of them should not alter the behavior of the others.
 - The configuration file is the only basis for the module's behavior. Do not add hidden runtime presets in code, and do not rewrite user configuration automatically based on the data source.
 
 ### Code style

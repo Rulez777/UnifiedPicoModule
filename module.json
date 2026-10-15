@@ -1,10 +1,10 @@
 {
   "ModuleId": "8322e16d-c38b-42f0-8d35-68f27227b442",
-  "Version": "0.2.0",
+  "Version": "0.3.0",
   "AuthorName": "UnifiedPicoModule contributors",
   "ModuleName": "Unified PICO Face Tracking",
-  "ModuleDescription": "PICO eye and face tracking for VRCFaceTracking, receiving data from PicoFacialBridge, PICO Connect, Streaming Assistant, or PicoFacialDataDaemon. Supports independent per-eye gaze, mode-specific adaptive gaze smoothing, fixed eyelid sources, and configurable expression processing.",
-  "UsageInstructions": "Disable older PICO tracking modules, install this module, and restart VRCFaceTracking 5.4.5. Native source-clock gaze smoothing is enabled by default: normal mode uses 100/4 Hz, Beta 1 and Blink 0.30/0.60; dual uses 250/4 Hz, Beta 8 and Openness 0.80/0.45. Eyelids use only Blink in normal mode or native Openness in confirmed enhanced mode, holding the last value when unavailable. EyeWide is amplified 2x; other expression corrections are off. Explicit settings in UnifiedPicoModule.json take precedence. See the README for configuration and validation details.",
+  "ModuleDescription": "PICO eye and face tracking for VRCFaceTracking, receiving data from PicoFacialBridge, PICO Connect, Streaming Assistant, or PicoFacialDataDaemon. Gaze comes from the EyeLook expression model and eyelids from 1 - EyeBlink; native eye packets supply a measured pupil diameter. Supports independent per-eye eye expressions and configurable expression processing.",
+  "UsageInstructions": "Disable older PICO tracking modules, install this module, and restart VRCFaceTracking 5.4.5. Gaze is derived from the EyeLook shapes and eyelid openness from 1 - EyeBlink for every sender. With PicoET-Enhance v2.2.0+ and PicoFacialBridge v0.4.0+, per-eye independent eye-expression X packets and measured pupil diameter are supported; an invalid eye holds its own last value. EyeWide is amplified 2x; other expression corrections are off. Explicit settings in UnifiedPicoModule.json take precedence. See the README for configuration and validation details.",
   "DownloadUrl": "",
   "ModulePageUrl": "https://github.com/WolalaQAQ/UnifiedPicoModule",
   "DllFileName": "UnifiedPicoModule.dll"

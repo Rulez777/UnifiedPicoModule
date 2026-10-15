@@ -33,8 +33,7 @@ public static class LegacyImporter
         };
         var text = File.ReadAllText(path);
         var config = new ModuleConfig();
-        config.GazeSmoothing.Enabled = false;
-        report.Add("迁移保持 GazeSmoothing.Enabled=false，不额外平滑旧配置的视线。");
+        report.Add("视线与眼睑开合统一由表情模型的 EyeLook 和 1 - EyeBlink 驱动，原生眼动包只提供真实瞳孔直径；旧配置中的 gaze/openness 来源选择没有对应字段，不再保留。");
         // Imports preserve legacy gain behavior instead of adding the fresh-install EyeWide x2.
         config.PostProcessing.ChannelGain.Enabled = false;
         report.Add("迁移不自动应用新安装的 EyeWide ×2 默认补偿；按旧配置保留增益语义。");
@@ -60,9 +59,6 @@ public static class LegacyImporter
     private static void ImportBridge(JsonElement root, string version, ModuleConfig config, List<string> report)
     {
         config.Source = SourceSelection.Bridge;
-        config.EyePolicy = version == BridgeCurrent ? EyePolicy.NativePreferred : EyePolicy.LegacyNative;
-        report.Add("睁眼度默认使用独立的 OpennessPolicy=Auto：普通或未知模式只用 1 - EyeBlink，已确认增强模式只用原生睁眼度；选定来源无效时不切换，默认保持本眼最近有效值。需要固定来源时可显式设为 BlendshapeOnly 或 NativePreferred，不影响视线。");
-        config.LegacyPerEyeGaze = version == BridgeUpstream;
         config.LegacyExpressionCeiling = false;
         config.Bridge.Protocol = version == BridgeCurrent ? InputProtocol.BridgeSplit : InputProtocol.DaemonLegacy536;
         var fields = Fields(root, "", report);
@@ -91,7 +87,7 @@ public static class LegacyImporter
         Unknown(fields, "", report);
         report.Add("来源证据：thoricelli/PicoFacialDataModule SettingsManager.cs；upstream 固定 0ab66348bf970763322fe261b54445bcc5a2b23e；current 为 reference 工作区 0.1-beta-split-fix1（非 HEAD）。");
         report.Add("迁移不保留旧右眼状态位错误、无限等待或旧 pupil 布尔阈值。Bridge 未设置 0.99 全局上限：旧 ShapeGain 仅非等倍时局部限幅 0.99，新 ChannelGain 统一安全限幅 0–1，饱和值可能不同；不擅自把关闭/等倍输出也降至 0.99。");
-        report.Add(version == BridgeCurrent ? "当前 normal/enhance 由有效能力公告决定；不从旧 JSON 猜测或强制开启独立双眼能力。" : "显式启用 LegacyPerEyeGaze 仅为旧行为兼容，不宣称为已验证的真实辐辏。");
+        report.Add(version == BridgeCurrent ? "旧 JSON 的 normal/enhance 记录不导入：模式公告是运行时能力信息，视线与眼睑统一由表情来源决定。" : "旧 upstream 的分眼视线开关不再导入：原生包的视线字段不参与输出，视线统一由表情推算。");
     }
 
     private static void ImportShapeGain(JsonElement json, ModuleConfig config, List<string> report)
@@ -129,7 +125,6 @@ public static class LegacyImporter
     {
         config.Source = SourceSelection.Streaming;
         config.Streaming.Protocol = InputProtocol.StreamingHeader16;
-        config.EyePolicy = EyePolicy.BlendshapeOnly;
         config.LegacyExpressionCeiling = true;
         var fields = Fields(root, "", report);
         var gains = new Dictionary<string, float>();
@@ -174,7 +169,6 @@ public static class LegacyImporter
     private static void ImportPike(string text, ModuleConfig config, List<string> report)
     {
         config.Source = SourceSelection.Auto;
-        config.EyePolicy = EyePolicy.BlendshapeOnly;
         var entries = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var duplicates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var lineNumber = 0;

@@ -10,14 +10,10 @@ public sealed class ModuleConfig
     public bool DisableFaceTracking { get; set; }
     public BridgeSettings Bridge { get; set; } = new();
     public StreamingSettings Streaming { get; set; } = new();
-    public EyePolicy EyePolicy { get; set; } = EyePolicy.NativePreferred;
-    public OpennessPolicy OpennessPolicy { get; set; } = OpennessPolicy.Auto;
     public EyeGainSettings EyeGain { get; set; } = new();
-    public GazeSmoothingSettings GazeSmoothing { get; set; } = new();
     public StaleSettings Stale { get; set; } = new();
     public bool AllowFallback { get; set; }
     public int AutoSelectionWindowMs { get; set; } = 1500;
-    public bool LegacyPerEyeGaze { get; set; }
     public bool LegacyExpressionCeiling { get; set; }
     public PostProcessingSettings PostProcessing { get; set; } = new();
     public MigrationMetadata? Migration { get; set; }
@@ -58,25 +54,6 @@ public sealed class EyeGainSettings
     public float RightY { get; set; } = 1;
     public float LeftOpenness { get; set; } = 1;
     public float RightOpenness { get; set; } = 1;
-}
-// Mode-specific release defaults; dual coefficients were selected by offline replay.
-public sealed class GazeSmoothingSettings
-{
-    public bool Enabled { get; set; } = true;
-    public double LightCutoffHz { get; set; } = 100;
-    public double HeavyCutoffHz { get; set; } = 4;
-    public double Beta { get; set; } = 1;
-    // Explicit null inherits the shared setting; omitted fields use the dual defaults.
-    public double? DualLightCutoffHz { get; set; } = 250;
-    public double? DualBeta { get; set; } = 8;
-    public double DerivativeCutoffHz { get; set; } = 1;
-    public double BlinkLow { get; set; } = 0.30;
-    public double BlinkHigh { get; set; } = 0.60;
-    public double OpennessHigh { get; set; } = 0.80;
-    public double OpennessLow { get; set; } = 0.45;
-    public int LidConfirmMs { get; set; } = 350;
-    public int LidSmoothingMs { get; set; } = 150;
-    public int ResetGapMs { get; set; } = 50;
 }
 public sealed class StaleSettings
 {

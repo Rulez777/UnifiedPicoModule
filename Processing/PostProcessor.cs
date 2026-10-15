@@ -93,19 +93,19 @@ public sealed class PostProcessor
     private void ApplyBrowInnerSeparation(RawFace raw, ExpressionFrame output)
     {
         var rule = settings.BrowInnerSeparation;
-        if (!rule.Enabled || !raw.Has(PicoShape.BrowInnerUp)) return;
-        var reduction = raw[PicoShape.BrowInnerUp] * rule.Strength;
-        if (raw.Has(PicoShape.BrowOuterUpL))
-            output[ExpressionChannel.BrowOuterUpLeft] = Math.Max(0, output[ExpressionChannel.BrowOuterUpLeft] - reduction);
-        if (raw.Has(PicoShape.BrowOuterUpR))
-            output[ExpressionChannel.BrowOuterUpRight] = Math.Max(0, output[ExpressionChannel.BrowOuterUpRight] - reduction);
+        if (!rule.Enabled) return;
+        if (raw.HasInnerBrow(true) && raw.Has(PicoShape.BrowOuterUpL))
+            output[ExpressionChannel.BrowOuterUpLeft] = Math.Max(0, output[ExpressionChannel.BrowOuterUpLeft] - raw.InnerBrow(true) * rule.Strength);
+        if (raw.HasInnerBrow(false) && raw.Has(PicoShape.BrowOuterUpR))
+            output[ExpressionChannel.BrowOuterUpRight] = Math.Max(0, output[ExpressionChannel.BrowOuterUpRight] - raw.InnerBrow(false) * rule.Strength);
     }
 
     private void ApplyBrowDownResponse(RawFace raw, ExpressionFrame output)
     {
         var rule = settings.BrowDownResponse;
         if (!rule.Enabled) return;
-        if (rule.BlinkAsymmetryStrength > 0 &&
+        bool useAsymmetry = raw.IndependentEyes is null && rule.BlinkAsymmetryStrength > 0;
+        if (useAsymmetry &&
             (!raw.Has(PicoShape.EyeBlinkL) || !raw.Has(PicoShape.EyeBlinkR))) return;
         Apply(PicoShape.BrowDownL, PicoShape.EyeBlinkL, PicoShape.EyeBlinkR,
             ExpressionChannel.BrowLowererLeft, ExpressionChannel.BrowPinchLeft);
@@ -117,7 +117,7 @@ public sealed class PostProcessor
         {
             if (!raw.Has(brow)) return;
             var value = NormalizedSigmoid(raw[brow], rule.Center, rule.Slope) * rule.Gain;
-            if (rule.BlinkAsymmetryStrength > 0)
+            if (useAsymmetry)
                 value *= 1 - rule.BlinkAsymmetryStrength * Math.Clamp(raw[otherBlink] - raw[blink], 0, 1);
             output[lowerer] = value;
             output[pinch] = value;

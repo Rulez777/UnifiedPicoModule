@@ -69,7 +69,7 @@ Changing the SDK version requires updating the commit and fingerprints in the sc
 ### UnifiedPicoModule.csproj
 
 - Targets `net10.0`, with nullable reference types and implicit usings enabled, and all warnings treated as errors.
-- The version is set by the `Version` property and is currently `0.2.0`.
+- The version is set by the `Version` property and is currently `0.3.0`.
 - References `VRCFaceTracking.SDK.dll` and `VRCFaceTracking.Core.dll` under `$(VrcftSdkDir)` through `HintPath`, with `Private=false`, so neither DLL is copied to the output directory. `VrcftSdkDir` defaults to `.sdk` in the repository and can be overridden as an MSBuild property.
 - The `CheckSdk` target checks that both DLLs exist before references are resolved and requires their assembly version to be `5.4.5.0`.
 - References `Microsoft.Extensions.Logging.Abstractions` 10.0.1 with `PrivateAssets="all"`.
@@ -93,7 +93,7 @@ The module metadata read by VRCFT contains the following fields:
 | Field | Current value or description |
 |---|---|
 | `ModuleId` | `8322e16d-c38b-42f0-8d35-68f27227b442`; also determines the module's directory name under `CustomLibs` |
-| `Version` | `0.2.0`; must match the version in `UnifiedPicoModule.csproj` |
+| `Version` | `0.3.0`; must match the version in `UnifiedPicoModule.csproj` |
 | `ModuleName` | `Unified PICO Face Tracking` |
 | `ModuleDescription` / `UsageInstructions` | Text shown in the module list |
 | `DownloadUrl` | Currently empty |
@@ -149,11 +149,11 @@ The timestamp in the file names keeps each run from overwriting earlier output. 
 4. Commit and push these changes, then create and push a tag for that commit:
 
 ```powershell
-git tag -a v0.2.0 -m "UnifiedPicoModule 0.2.0"
-git push origin v0.2.0
+git tag -a v0.3.0 -m "UnifiedPicoModule 0.3.0"
+git push origin v0.3.0
 ```
 
-The tag format is `vMAJOR.MINOR.PATCH`, optionally followed by a SemVer pre-release suffix such as `v0.2.0-rc.1`. Build metadata (`+build`) is not accepted, and leading zeros are not allowed in the numeric parts or in numeric pre-release identifiers.
+The tag format is `vMAJOR.MINOR.PATCH`, optionally followed by a SemVer pre-release suffix such as `v0.3.0-rc.1`. Build metadata (`+build`) is not accepted, and leading zeros are not allowed in the numeric parts or in numeric pre-release identifiers.
 
 ### Build job
 
@@ -205,7 +205,7 @@ docs/            Public documentation
 | `Core` | Enumerations (sources, protocols, connection states, PICO expressions, module output channels, etc.), the monotonic clock, raw eye and face data, source snapshots and the module output model. Source snapshots are immutable |
 | `Protocol` | Decoders for the four wire formats, `BridgeSplitDecoder`, `DaemonLegacyDecoder`, `Header16Decoder` and `BodyOnlyDecoder`, plus construction and parsing of Bridge control messages (`BridgeControl`) |
 | `Transport` | `UdpTrackingSource` handles socket binding, the background receive thread, timestamp deduplication, dropped packet counting and log rate limiting. `BridgeUdpSource` implements discovery, heartbeat, channel subscription and peer locking on port 9030. `StreamingUdpSource` implements reception on ports 29765 and 29763 and the local-source restriction |
-| `Mapping` | `NeutralFaceMapper` maps PICO expressions to module output channels. `EyeResolver` prefers native gaze according to the eye policy and derives gaze from expressions when needed |
+| `Mapping` | `NeutralFaceMapper` maps PICO expressions to module output channels. `EyeResolver` derives each eye's gaze from the `EyeLook` shapes and its openness from `1 - EyeBlink`, and resolves the measured pupil diameter |
 | `Processing` | `PostProcessor` runs the optional post-processing rules in a fixed order and maintains the time state those rules require |
 | `Configuration` | `ModuleConfig` and `PostProcessingSettings` define the configuration model and defaults. `ConfigStore` handles reading and writing, `ConfigValidator` handles validation and fallback, and `LegacyImporter` performs read-only migration of old configurations |
 | `Runtime` | `SourceCoordinator` creates the data sources and selects one of them. `TrackingPipeline` converts the selected snapshot into output and handles stale data. `DiagnosticReporter` writes the status log every 5 seconds |

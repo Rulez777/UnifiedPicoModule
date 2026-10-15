@@ -159,7 +159,7 @@ AssemblyVersion 不能替代源码提交的固定版本，也不代表所有同�
 - 源码仓库：[dotnet/dotnet 固定提交](https://github.com/dotnet/dotnet/tree/fad253f51b461736dfd3cd9c15977bb7493becef)
 - 依赖：net10 目标依赖 `Microsoft.Extensions.DependencyInjection.Abstractions` 10.0.1
 
-模块工程以 `PrivateAssets=all` 引用该包。`PrivateAssets` 是依赖传递的设置，并不保证相关文件不会被复制，也不是许可证。模块包按文件白名单打包，不包含 logging 或其他 NuGet DLL，所需的运行时依赖由宿主提供，其运行兼容性尚未实测。如改为分发这些组件，须另行核对版权、许可证与附件。Microsoft 的版权不归本项目所有。
+模块工程以 `PrivateAssets=all` 引用该包。`PrivateAssets` 是依赖传递的设置，并不保证相关文件不会被复制，也不是许可证。模块包按文件白名单打包，不包含 logging 或其他 NuGet DLL，所需的运行时依赖由宿主提供；模块已在官方 VRCFT 5.4.5 上运行，其他宿主版本尚未测试。如改为分发这些组件，须另行核对版权、许可证与附件。Microsoft 的版权不归本项目所有。
 
 ## 资源与后续更新
 

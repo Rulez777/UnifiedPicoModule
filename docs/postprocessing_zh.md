@@ -14,7 +14,7 @@
 
 规则的配置位于 `UnifiedPicoModule.json` 的 `PostProcessing.<规则名>` 下，修改后需要重启 VRCFT。每条规则都有一个 `Enabled` 字段，除 `ChannelGain` 默认为 `true` 外，其余规则默认均为 `false`。规则对象中未写出的字段使用默认值。
 
-多数规则的设计参考了 pikepikeid/VRCFTPicoModule（pike）中的固定补偿逻辑，`TongueHold` 是本项目针对舌头数值短时掉零新增的规则。所有规则均为本项目的独立实现，没有复制上游代码，曲线和常量也与上游不同。旧配置迁移时的近似对应关系请参阅[配置说明](configuration_zh.md#pike-mode-的一次性近似展开)，来源版本与许可边界请参阅[第三方声明](../THIRD_PARTY_NOTICES_zh.md)。
+多数规则的设计参考了 pikepikeid/VRCFTPicoModule（pike）中的固定补偿逻辑，`TongueHold` 是本项目针对舌头数值短时掉零新增的规则。所有规则均为本项目的独立实现，曲线和常量与上游不同。旧配置迁移时的近似对应关系请参阅[配置说明](configuration_zh.md#旧配置迁移)，来源版本与许可边界请参阅[第三方声明](../THIRD_PARTY_NOTICES_zh.md)。
 
 ## 执行顺序
 
@@ -54,7 +54,7 @@
 | `EyeSquintL/R` | `EyeSquintLeft/Right` |
 | `EyeWideL/R` | `EyeWideLeft/Right` |
 | `BrowDownL/R` | `BrowPinchLeft/Right`、`BrowLowererLeft/Right` |
-| `BrowInnerUp` | `BrowInnerUpLeft`、`BrowInnerUpRight` |
+| `BrowInnerUp` | 普通包：`BrowInnerUpLeft`、`BrowInnerUpRight` 共用这一个值。`X` 包：`BrowInnerUpLeft` 取该值，`BrowInnerUpRight` 取独立的右内眉 |
 | `BrowOuterUpL/R` | `BrowOuterUpLeft/Right` |
 | `CheekPuff` | `CheekPuffLeft`、`CheekPuffRight` |
 | `JawOpen` | `JawOpen` |
@@ -77,6 +77,8 @@
 某个原始字段不存在、不是有限数值或所属数据无效时，视为缺失。缺失不按 0 处理：规则会跳过对应的一侧，或者整条规则不执行，具体见各规则说明。
 
 眉毛、眯眼、瞪眼和眨眼属于眼部区域字段，其余属于面部区域字段，两者的有效性分别判断。启用 `DisableEyeTracking` 后眼部区域字段全部视为缺失，启用 `DisableFaceTracking` 后面部区域字段全部视为缺失。
+
+普通包的眼部区域只有一个对两眼共用的有效位。`X` 包中每只眼有各自的质量状态：状态为 0（不可用）时，只有该眼的字段（包括其内眉）视为缺失；-1（未知）和 1 保留数据。另一只眼不受影响。
 
 ### 平滑阶跃
 
@@ -139,7 +141,7 @@ O[ch] = O[ch] * (Gains[ch] 存在 ? Gains[ch] : DefaultGain)
 O.BrowOuterUp = max(0, O.BrowOuterUp - R.BrowInnerUp * Strength)    // 每侧
 ```
 
-`BrowInnerUp` 缺失时整条规则不执行，某侧 `BrowOuterUp` 缺失时跳过该侧。内眉通道本身不变。真实的整眉上抬也会被削弱。
+普通包两侧使用共用的 `BrowInnerUp`；独立表情 `X` 包使用各自的内眉。某侧内眉或外眉不可用时跳过该侧。内眉通道本身不变。真实的整眉上抬也会被削弱。
 
 ### BrowDownResponse
 
@@ -167,7 +169,7 @@ O.BrowLowerer = O.BrowPinch = v                                      // 每侧
 
 `N` 将 0 映射为 0、1 映射为 1，中间部分由 `Center` 和 `Slope` 决定。眨眼差项的含义是：另一只眼闭合程度高于本侧时，本侧的下压被削弱，用于减少单眼眨眼带动的眉毛抖动。
 
-规则直接覆盖输出值，不与中性映射的结果叠加。某侧 `BrowDown` 缺失时跳过该侧。`BlinkAsymmetryStrength > 0` 且任一侧 `EyeBlink` 缺失时，整条规则不执行，两侧都保留中性映射的结果。
+规则直接覆盖输出值，不与中性映射的结果叠加。某侧 `BrowDown` 缺失时跳过该侧。普通包中，`BlinkAsymmetryStrength > 0` 且任一侧 `EyeBlink` 缺失时，整条规则不执行，两侧都保留中性映射的结果。独立表情 `X` 包跳过跨眼 BlinkAsymmetry，保留本侧响应曲线。
 
 ### SquintResponse
 

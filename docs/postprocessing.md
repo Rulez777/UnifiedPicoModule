@@ -14,7 +14,7 @@ None of the default coefficients have been calibrated on a real headset. The Eye
 
 Rules are configured under `PostProcessing.<RuleName>` in `UnifiedPicoModule.json`, and changes take effect after VRCFT is restarted. Every rule has an `Enabled` field, which defaults to `true` for `ChannelGain` and `false` for all other rules. Fields omitted from a rule object keep their default values.
 
-Most rules are modeled on the fixed compensation logic in pikepikeid/VRCFTPicoModule (pike). `TongueHold` was added in this project to address the tongue value briefly dropping to zero. All rules are independent implementations; no upstream code was copied, and the curves and constants differ from upstream. For how earlier configurations map to these rules, see [pike mode: one-time approximation](configuration.md#pike-mode-one-time-approximation) in the configuration reference. For source versions and license boundaries, see the [third-party notices](../THIRD_PARTY_NOTICES.md).
+Most rules are modeled on the fixed compensation logic in pikepikeid/VRCFTPicoModule (pike). `TongueHold` was added in this project to address the tongue value briefly dropping to zero. All rules are independent implementations whose curves and constants differ from upstream. For how earlier configurations map to these rules, see [Migrating earlier configurations](configuration.md#migrating-earlier-configurations) in the configuration reference. For source versions and license boundaries, see the [third-party notices](../THIRD_PARTY_NOTICES.md).
 
 ## Execution order
 
@@ -54,7 +54,7 @@ The output channels that rules modify come from the neutral mapping below. The n
 | `EyeSquintL/R` | `EyeSquintLeft/Right` |
 | `EyeWideL/R` | `EyeWideLeft/Right` |
 | `BrowDownL/R` | `BrowPinchLeft/Right`, `BrowLowererLeft/Right` |
-| `BrowInnerUp` | `BrowInnerUpLeft`, `BrowInnerUpRight` |
+| `BrowInnerUp` | Ordinary packets: `BrowInnerUpLeft` and `BrowInnerUpRight` both take this one value. `X` packets: `BrowInnerUpLeft` takes it, and `BrowInnerUpRight` takes the independent right inner brow |
 | `BrowOuterUpL/R` | `BrowOuterUpLeft/Right` |
 | `CheekPuff` | `CheekPuffLeft`, `CheekPuffRight` |
 | `JawOpen` | `JawOpen` |
@@ -77,6 +77,8 @@ Only the mappings relevant to the rules are listed. The complete mapping is in `
 A raw field is treated as missing if it is absent, not a finite number, or belongs to data that is currently invalid. Missing values are not treated as zero. Depending on the rule, the affected side is skipped or the whole rule does not run; see the description of each rule.
 
 Brow, squint, eye-widening and blink fields belong to the eye region; all other fields belong to the face region. Validity is determined separately for each region. With `DisableEyeTracking` enabled, all eye-region fields are treated as missing; with `DisableFaceTracking` enabled, all face-region fields are treated as missing.
+
+In ordinary packets the eye region has one validity flag for both eyes. In `X` packets each eye has its own quality state: a state of 0 (unusable) marks only that eye's fields as missing, including its inner brow, while -1 (unknown) and 1 keep the data. The other eye is unaffected.
 
 ### Smooth step
 
@@ -139,7 +141,7 @@ Affected channels: `BrowOuterUpLeft`, `BrowOuterUpRight`.
 O.BrowOuterUp = max(0, O.BrowOuterUp - R.BrowInnerUp * Strength)    // per side
 ```
 
-The rule does not run if `BrowInnerUp` is missing, and a side is skipped if its `BrowOuterUp` is missing. The inner brow channels are unchanged. A genuine full-brow raise is also reduced.
+For ordinary packets, the common `BrowInnerUp` is used on both sides. Independent-expression `X` packets use each side's own inner brow. A side is skipped if its inner or outer brow is unavailable. The inner brow channels are unchanged. A genuine full-brow raise is also reduced.
 
 ### BrowDownResponse
 
@@ -167,7 +169,7 @@ O.BrowLowerer = O.BrowPinch = v                                      // per side
 
 `N` maps 0 to 0 and 1 to 1, with the shape in between set by `Center` and `Slope`. The blink-difference term weakens a side's brow lowering when the other eye is more closed, which reduces brow jitter caused by single-eye blinks.
 
-The rule overwrites the output rather than adding to the neutral mapping. A side is skipped if its `BrowDown` is missing. If `BlinkAsymmetryStrength > 0` and either `EyeBlink` is missing, the whole rule does not run and both sides keep the neutral mapping.
+The rule overwrites the output rather than adding to the neutral mapping. A side is skipped if its `BrowDown` is missing. For ordinary packets, if `BlinkAsymmetryStrength > 0` and either `EyeBlink` is missing, the whole rule does not run and both sides keep the neutral mapping. Independent-expression `X` packets skip cross-eye BlinkAsymmetry but retain the per-side response curve.
 
 ### SquintResponse
 

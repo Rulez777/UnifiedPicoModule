@@ -14,7 +14,6 @@ public static class NeutralFaceMapper
         (P.EyeWideL, [C.EyeWideLeft]), (P.EyeWideR, [C.EyeWideRight]),
         (P.BrowDownL, [C.BrowPinchLeft, C.BrowLowererLeft]),
         (P.BrowDownR, [C.BrowPinchRight, C.BrowLowererRight]),
-        (P.BrowInnerUp, [C.BrowInnerUpLeft, C.BrowInnerUpRight]),
         (P.BrowOuterUpL, [C.BrowOuterUpLeft]), (P.BrowOuterUpR, [C.BrowOuterUpRight]),
         (P.CheekSquintL, [C.CheekSquintLeft]), (P.CheekSquintR, [C.CheekSquintRight]),
         (P.CheekPuff, [C.CheekPuffLeft, C.CheekPuffRight]),
@@ -48,10 +47,13 @@ public static class NeutralFaceMapper
             if (!raw.Has(input)) continue;
             foreach (var output in outputs) result[output] = Math.Clamp(raw[input], 0, 1);
         }
+        if (raw.HasInnerBrow(true)) result[C.BrowInnerUpLeft] = Math.Clamp(raw.InnerBrow(true), 0, 1);
+        if (raw.HasInnerBrow(false)) result[C.BrowInnerUpRight] = Math.Clamp(raw.InnerBrow(false), 0, 1);
         return result;
     }
 
     public static bool HasConsumableExpressions(RawFace raw, bool eyeEnabled, bool faceEnabled) =>
+        eyeEnabled && (raw.HasInnerBrow(true) || raw.HasInnerBrow(false)) ||
         Bindings.Any(binding => raw.Has(binding.Input) &&
             binding.Outputs.Any(channel => ExpressionFrame.IsEye(channel) ? eyeEnabled : faceEnabled));
 }

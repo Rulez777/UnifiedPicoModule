@@ -4,58 +4,50 @@ English | [简体中文](README_zh.md) · [Back to main README](../../README.md)
 
 UnifiedPicoConfigTool is an offline command-line configuration tool for UnifiedPicoModule. It provides three functions: validating a configuration file in the current format, exporting the default configuration, and migrating configurations from earlier PICO modules to the current format.
 
-The tool compiles only `Core/Contracts.cs` and the sources in the `Configuration` directory. It does not reference the VRCFaceTracking SDK and does not require VRCFT to be running. The tool does not install the module, does not write configurations into the module directory, and does not modify earlier configuration files, VRCFT settings or avatar settings. Generated configurations must be reviewed and put in place manually.
+The tool does not need the VRCFaceTracking SDK or a running VRCFT. It does not install the module, apply configurations automatically, or modify earlier configuration files, VRCFT settings or avatar settings; it writes only the paths you give it. Generated configurations must be reviewed and put in place manually.
 
 ## Building
 
-The tool is not included in the module package and must be built from source. Building requires the .NET 10 SDK. Run all commands below from the project root.
-
-`tools/build.ps1` builds the tool after the module:
-
-```powershell
-./tools/build.ps1 -Configuration Release
-```
-
-This script requires the pinned VRCFaceTracking source; see the [development guide](../../docs/development.md) for how to prepare it. The tool itself does not depend on the SDK, so it can also be built on its own:
+The tool is not included in the module package and must be built from source with the .NET 10 SDK. It does not depend on the VRCFaceTracking SDK, so it can be built on its own. Run these commands from the project root:
 
 ```powershell
 dotnet build tools/ConfigTool/ConfigTool.csproj -c Release
-```
-
-The output is `tools/ConfigTool/bin/Release/net10.0/UnifiedPicoConfigTool.dll`, with a directly executable `UnifiedPicoConfigTool.exe` in the same directory. Running the tool without arguments, or with `--help` or `-h`, prints the command syntax and the available source version labels.
-
-```powershell
 dotnet tools/ConfigTool/bin/Release/net10.0/UnifiedPicoConfigTool.dll --help
 ```
 
+The output is `tools/ConfigTool/bin/Release/net10.0/UnifiedPicoConfigTool.dll`, with an executable `UnifiedPicoConfigTool.exe` in the same directory. Running the tool without arguments, or with `--help` or `-h`, prints the command syntax and the available source version labels.
+
+`./tools/build.ps1 -Configuration Release` builds the module and this tool together, if you have already prepared the pinned VRCFaceTracking source for the module (see the [development guide](../../docs/development.md)).
+
 ## Workflow
 
-When migrating from an earlier module, the following order is recommended. In the examples, `legacy/` stands for a directory holding a copy of the earlier configuration. It must be prepared in advance; the tool does not scan for or create it.
+Before migrating, prepare two things:
+
+- A copy of the earlier configuration, for example in `legacy/` (the tool does not scan for or create it).
+- The source version label that matches where that file actually comes from; the example below uses `bridge-upstream-0ab66348`. See [Source versions](#source-versions).
 
 ```powershell
 $tool = "tools/ConfigTool/bin/Release/net10.0/UnifiedPicoConfigTool.dll"
 
-# 1. Validate the existing configuration in the current format, if any
+# Optional: validate the module's current configuration, if you already have one
 dotnet $tool validate UnifiedPicoModule.json
 
-# 2. Export a default configuration for comparison
+# Optional: export the defaults as a reference for review
 dotnet $tool defaults UnifiedPicoModule.defaults.json
 
-# 3. Migrate the earlier configuration into a new configuration and a report
+# Migrate the earlier configuration into a new configuration and a report
 dotnet $tool import legacy/PicoFacialDataModule.json bridge-upstream-0ab66348 UnifiedPicoModule.imported.json migration-report.txt
 
-# 4. Validate the migrated configuration
+# Validate the migrated configuration
 dotnet $tool validate UnifiedPicoModule.imported.json
 ```
 
-After these steps:
+Then put the result in place by hand:
 
-1. Read `migration-report.txt` and decide whether the fields that were not imported and the behavior that was not reproduced are acceptable. If necessary, adjust the migrated configuration, using the defaults exported in step 2 as a reference.
+1. Read `migration-report.txt` and decide whether the fields that were not imported and the behavior that was not reproduced are acceptable. If necessary, adjust the migrated configuration, using the exported defaults as a reference.
 2. Exit VRCFT completely and back up the existing `UnifiedPicoModule.json` in the module directory.
 3. Copy the reviewed configuration into the module directory as `UnifiedPicoModule.json`. The module directory is `%APPDATA%\VRCFaceTracking\CustomLibs\8322e16d-c38b-42f0-8d35-68f27227b442\`.
 4. Start VRCFT again and check the Output page for messages about configuration fields.
-
-These commands only illustrate the file operations. Choose the source version label according to where the earlier configuration actually comes from; see [Source versions](#source-versions).
 
 ## Commands
 
@@ -65,7 +57,7 @@ These commands only illustrate the file operations. Choose the source version la
 | `defaults <output-file>` | Writes the model defaults to a file that does not yet exist |
 | `import <earlier-config> <source-version> <new-config-output> <report-output>` | Reads one earlier configuration file and generates a new configuration and a migration report |
 
-The command is named `defaults`; there is no `default` command. An unknown command or a wrong number of arguments results in an error and exit code 1.
+An unknown command or a wrong number of arguments results in an error and exit code 1.
 
 ### validate
 
@@ -89,20 +81,13 @@ If the JSON is malformed or its root is not an object, `validate` reports a fail
 
 `defaults` writes the model defaults to the specified path. The generated configuration contains every field: `ConfigVersion` is 1, and `Bridge.IP`, `Streaming.IP` and `Migration` are `null`. Of the post-processing rules, only `ChannelGain` is enabled, with the left and right EyeWide channels at 2× and other channels at 1×; the other 13 rules are disabled.
 
-The output file must not already exist, and its parent directory must exist. The tool creates the file with `CreateNew` and reports an error instead of overwriting an occupied path.
+The output file must not already exist, and its parent directory must exist; an occupied path is reported as an error and never overwritten.
 
 ### import
 
-`import` reads only the earlier configuration file named on the command line. It does not search other locations and does not merge multiple sources. The steps are:
+`import` reads only the earlier configuration file named on the command line. It does not search other locations and does not merge multiple sources. The earlier configuration, the new configuration output and the report output must be three different paths (compared case-insensitively), neither output may already exist, and the source version must be a supported label. If any of these checks or the conversion fails, no files are written and the earlier configuration is untouched.
 
-1. Check that the earlier configuration, the new configuration output and the report output are three different paths (full paths, compared case-insensitively).
-2. Check that neither output path is occupied by a file or directory.
-3. Check that the source version is one of the supported labels.
-4. Read and convert the earlier configuration.
-5. Create the report file with `CreateNew` and write the migration report.
-6. Write the new configuration with `CreateNew`, and on success append the line `新配置成功写入：<path>` ("new configuration written") to the end of the report.
-
-If any of the first four steps fails, no files are written. If step 6 fails, the report file already exists but lacks this final confirmation line; the tool does not delete it. The earlier configuration file is never modified.
+The tool writes the migration report first, then the new configuration, and on success appends the line `新配置成功写入：<path>` ("new configuration written") to the end of the report; that line shows the import finished. If the run fails midway, the report and possibly a partial configuration remain at the paths you gave. Check them, keep them if useful, and retry with two new unused paths, since an occupied output path is never overwritten.
 
 Exit code 0 only means both files were written. It does not mean the migrated configuration behaves the same as the earlier module, nor that device compatibility has been verified.
 
@@ -158,9 +143,9 @@ Fixed settings for the two labels:
 |---|---|---|
 | `Source` | `Bridge` | `Bridge` |
 | `Bridge.Protocol` | `BridgeSplit` | `DaemonLegacy536` |
-| `EyePolicy` | `NativePreferred` | `LegacyNative` |
-| `LegacyPerEyeGaze` | `false` | `true` |
 | `LegacyExpressionCeiling` | `false` | `false` |
+
+Neither label imports the earlier gaze or openness source: the migrated configuration derives gaze from the `EyeLook` shapes and openness from `1 - EyeBlink`, and the difference is recorded in the report.
 
 ### SAFT (`saft-ab500f03`)
 
@@ -173,7 +158,7 @@ Fixed settings for the two labels:
 
 If `scales` contains an unknown or duplicated key, or an expression channel has an invalid value or appears twice, `ChannelGain` is disabled as a whole. If an eye key has an invalid value, only the corresponding `EyeGain` entry stays at 1. If `scales` is missing or not an object, `ChannelGain` is disabled and all `EyeGain` entries stay at 1. The earlier SAFT module applied the `EyeXGazeLeft` value to the right-eye Y axis by mistake; the migration uses `EyeYGazeRight` for the right-eye Y axis and does not carry this error over.
 
-Fixed settings: `Source` is `Streaming`, `Streaming.Protocol` is `StreamingHeader16`, `EyePolicy` is `BlendshapeOnly`, and `LegacyExpressionCeiling` is `true`. `Streaming.HeaderProfile` stays `null`, so data on port 29765 is accepted under the same permissive conditions as SAFT. The migration itself does not mean this path has been verified; for the verification status of each sender, see the [protocol reference](../../docs/protocol.md).
+Fixed settings: `Source` is `Streaming`, `Streaming.Protocol` is `StreamingHeader16`, and `LegacyExpressionCeiling` is `true`. `Streaming.HeaderProfile` stays `null`, so data on port 29765 is accepted under the same permissive conditions as SAFT. The migration itself does not mean this path has been verified; for the verification status of each sender, see the [protocol reference](../../docs/protocol.md).
 
 ### pike (`pike-c026aa4`)
 
@@ -186,7 +171,7 @@ Fixed settings: `Source` is `Streaming`, `Streaming.Protocol` is `StreamingHeade
 | `eye_gain` | Format `X,Y`. X is written to `EyeGain.LeftX` and `RightX`, Y to `EyeGain.LeftY` and `RightY`. If the format does not match, the gains stay at 1 |
 | `mode` | Values 0, 1 or 2, expanded into explicit post-processing rules and channel gains. Mode 0 enables no rules; modes 1 and 2 enable `ChannelGain` and several other rules. A missing `mode` is treated as 2, the default in the source at that commit; an invalid or duplicated `mode` leaves all post-processing rules disabled |
 
-Fixed settings: `Source` is `Auto` and `EyePolicy` is `BlendshapeOnly`.
+Fixed settings: `Source` is `Auto`.
 
 `mode` is expanded once, at migration time, into ordinary configuration fields; the module has no hidden presets at runtime. The rules and coefficients used for the expansion follow this project's specification, have not been calibrated on a real headset, and are not equivalent to the earlier algorithms item by item. For the exact parameters of each mode, see the section on migrating earlier configurations in the [configuration reference](../../docs/configuration.md).
 
@@ -203,7 +188,7 @@ The report is currently written in Chinese and contains:
 - corrections made by the validation after migration;
 - the earlier projects and pinned commits that were consulted.
 
-The migration is an independent implementation of this project. It is based only on the publicly visible configuration fields and observable behavior of the earlier projects and does not copy code from SAFT or lonelyicer, whose licensing is unclear.
+The migration is an independent implementation based on the publicly visible configuration fields and observable behavior of the earlier projects. For sources and licensing, see the [third-party notices](../../THIRD_PARTY_NOTICES.md).
 
 ## File safety and privacy
 

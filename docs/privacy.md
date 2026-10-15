@@ -75,7 +75,7 @@ UDP has no encryption or authentication, and the source address of a packet can 
 General checks:
 
 - Only IPv4 unicast source addresses are accepted.
-- Packet length is validated for each format: 83, 95, 151 or 227 bytes for BridgeSplit, 536 bytes for PicoFacialDataDaemon, 892 bytes for the headerless streaming format, and at least 908 bytes for the header format, whose tracking type must be face (2). Packets larger than 2048 bytes are discarded.
+- Packet length is validated for each format; see the [protocol reference](protocol.md#overview) for the accepted lengths. Packets larger than 2048 bytes are discarded.
 - When a connection is established, the first data packet must contain valid fields.
 - Data with a duplicate or backward timestamp is discarded.
 - Within a session, only the first protocol that passes validation is used.
@@ -112,9 +112,6 @@ Streaming (29765 / 29763):
 - When reporting a configuration issue, include only the relevant fields rather than the complete configuration.
 - Do not publish raw packet captures or recordings of tracking data.
 
-## Repository and release package
+## Release package
 
-- `Directory.Build.props` uses `PathMap` to map the project directory to `/_/UnifiedPicoModule/`, so source paths recorded in the build output do not include the build machine's user directory.
-- `tools/package.ps1` does not copy the developer's local `UnifiedPicoModule.json`. Instead, it uses the configuration tool to export a fresh default configuration from the configuration model, so the package contains no personal IP addresses or migration records. Documentation is copied from an explicit list of file names; the `docs/` directory is not copied recursively.
-- The `sdk-provenance.json` file in the package records only the SDK commit, assembly version and file digests, with no local paths.
-- `.gitignore` excludes runtime configuration, old module configuration, migration output, logs, packet captures and common credential files. Ignore rules cannot remove content that has already been committed, so the staged changes should still be reviewed before each commit.
+The module package contains a freshly generated default `UnifiedPicoModule.json`, so it carries no personal IP addresses, migration records or local paths. The compiled module does not record the build machine's user directory, and `sdk-provenance.json` lists only the SDK commit, assembly version and file digests. When sharing your own configuration or logs, follow the checklist above.

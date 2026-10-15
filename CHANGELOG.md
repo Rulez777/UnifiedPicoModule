@@ -2,6 +2,30 @@
 
 English | [简体中文](CHANGELOG_zh.md)
 
+## [0.3.0] - 2026-10-15
+
+### Features
+- Decode BridgeSplit `X` v1 packets carrying independent right inner brow and per-eye quality states alongside the standard eye/face shapes.
+- Derive gaze from the `EyeLook` shapes and eyelid openness from `1 - EyeBlink` for every sender and packet type, including independent-expression `X` packets.
+
+### Changed
+- The 83-byte `E` packet keeps its wire format and now supplies only the measured pupil diameter; its native gaze and openness fields are decoded but not output.
+- Existing configurations keep loading after the removed fields below are dropped: they are reported as unknown keys and ignored, and the file is not rewritten.
+
+### Removed
+- Remove the native gaze/openness resolution branch and the `AdaptiveGazeFilter` smoothing filter.
+- Remove the `EyePolicy`, `OpennessPolicy`, `GazeSmoothing` and `LegacyPerEyeGaze` configuration fields.
+
+### Design Rationale
+- Track per-eye cache provenance so an initially invalid X eye cannot inherit prior fused/native or ordinary-expression animation values; later invalid samples hold that eye's own last valid value.
+- One expression-driven eye path keeps ordinary and independent packets identical in behavior, and removes a smoothing stage whose parameters were selected only offline.
+- Preserve official VRCFT compatibility and separate brow values. Combined-brow averaging remains a host/avatar parameter choice; no host replacement or avatar-specific maximum-copy mode is included.
+
+### Notes & Caveats
+- Requires sender support for `X`: PicoFacialBridge 0.4.0 or later, with PicoET-Enhance 2.2.0 or later for independent per-eye expressions. Normal mode still accepts Bridge 0.3.0 or later; older receivers reject `X`. Quality state -1 remains unknown while its supplied data is usable.
+- Validated on official VRCFT 5.4.5 with PicoFacialBridge 0.4.0 and PicoET-Enhance 2.2.0: recorded eye images replayed through native eye inference reached the PC, and `E` and dual-channel `X` values matched their source outputs. The replay used about 23.7 Hz recorded images in an accelerated loop, so it verifies inference throughput and delivery, not an original 90 Hz camera sequence.
+- Release builds of the module and ConfigTool succeed. Single-eye quality failure (state 0), reference recovery and long live-camera use remain unverified. The Avatar's combined brow parameter averages the two sides; separate left/right brow parameters are needed to see independent values.
+
 ## [0.2.0] - 2026-10-11
 
 ### Added

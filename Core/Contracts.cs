@@ -6,8 +6,6 @@ namespace UnifiedPicoModule.Core;
 public enum SourceKind { Bridge, Streaming }
 public enum InputProtocol { BridgeSplit, DaemonLegacy536, StreamingHeader16, StreamingBodyOnly }
 public enum ConnectionState { Searching, Connected, MissingFrames, Stopped, Faulted }
-public enum EyePolicy { NativePreferred, LegacyNative, BlendshapeOnly }
-public enum OpennessPolicy { Auto, BlendshapeOnly, NativePreferred }
 public enum SourceSelection { Auto, Bridge, Streaming }
 
 // These numeric identifiers describe the PICO wire format, not an SDK enum.
@@ -51,29 +49,46 @@ public static class MonotonicClock
         arrival > 0 && now >= arrival && (now - arrival) * 1000 <= milliseconds;
 }
 
+// EPI1 v1: -1 is unknown, 0 is unusable, 1 is usable; unknown retains its data.
+public sealed record IndependentEyeExpression(float RightInnerUp, int LeftState, int RightState);
+
 public sealed class RawFace
 {
     private readonly float[] values;
     private readonly bool[] present;
     private readonly float[] extra;
+    private readonly bool eyeExpressionsEnabled;
     public ulong? SourceTimestamp { get; }
     public double Arrival { get; }
     public bool EyeValid { get; }
     public bool FaceValid { get; }
+    public IndependentEyeExpression? IndependentEyes { get; }
     public RawFace(float[] values, bool[] present, bool eyeValid, bool faceValid,
-        ulong? sourceTimestamp, double arrival, float[]? extraVisemes = null)
+        ulong? sourceTimestamp, double arrival, float[]? extraVisemes = null,
+        IndependentEyeExpression? independentEyes = null, bool eyeExpressionsEnabled = true)
     {
         if (values.Length != 52 || present.Length != 52) throw new ArgumentException("Expected 52 PICO shapes.");
         this.values = (float[])values.Clone(); this.present = (bool[])present.Clone();
         extra = extraVisemes is null ? [] : (float[])extraVisemes.Clone();
         EyeValid = eyeValid; FaceValid = faceValid; SourceTimestamp = sourceTimestamp; Arrival = arrival;
+        IndependentEyes = independentEyes; this.eyeExpressionsEnabled = eyeExpressionsEnabled;
     }
     public float this[PicoShape shape] => values[(int)shape];
     public bool Has(PicoShape shape) => present[(int)shape] && float.IsFinite(this[shape]) &&
-        (IsEyeShape(shape) ? EyeValid : FaceValid);
+        (IsEyeShape(shape) ? EyeAvailable(IsLeftEyeShape(shape)) : FaceValid);
+    public bool EyeAvailable(bool isLeft) => eyeExpressionsEnabled && (IndependentEyes is { } independent
+        ? (isLeft ? independent.LeftState : independent.RightState) != 0 : EyeValid);
+    public bool HasInnerBrow(bool isLeft) => !isLeft && IndependentEyes is { } independent
+        ? EyeAvailable(false) && float.IsFinite(independent.RightInnerUp) : Has(PicoShape.BrowInnerUp);
+    public float InnerBrow(bool isLeft) => !isLeft && IndependentEyes is { } independent
+        ? independent.RightInnerUp : this[PicoShape.BrowInnerUp];
     public ReadOnlySpan<float> ExtraVisemes => extra;
     public RawFace WithValidity(bool eyeEnabled, bool faceEnabled) =>
-        new(values, present, EyeValid && eyeEnabled, FaceValid && faceEnabled, SourceTimestamp, Arrival, extra);
+        new(values, present, EyeValid && eyeEnabled, FaceValid && faceEnabled, SourceTimestamp, Arrival, extra,
+            IndependentEyes, eyeExpressionsEnabled && eyeEnabled);
+    private static bool IsLeftEyeShape(PicoShape shape) => shape is PicoShape.EyeLookDownL or PicoShape.EyeLookInL or
+        PicoShape.BrowInnerUp or PicoShape.BrowDownL or PicoShape.EyeSquintL or PicoShape.EyeBlinkL or
+        PicoShape.BrowOuterUpL or PicoShape.EyeLookUpL or PicoShape.EyeLookOutL or PicoShape.EyeWideL;
     public static bool IsEyeShape(PicoShape shape) => shape is PicoShape.EyeLookDownL or PicoShape.EyeLookInL or
         PicoShape.BrowInnerUp or PicoShape.BrowDownR or PicoShape.EyeLookInR or PicoShape.EyeLookDownR or
         PicoShape.BrowDownL or PicoShape.EyeSquintL or PicoShape.EyeBlinkL or PicoShape.BrowOuterUpL or
@@ -114,6 +129,9 @@ public sealed class ExpressionFrame
         for (var i = 0; i < values.Length; i++) values[i] = float.IsFinite(values[i]) ? Math.Clamp(values[i], 0, maximum) : 0;
     }
     public static bool IsEye(ExpressionChannel channel) => (int)channel <= (int)ExpressionChannel.BrowOuterUpRight;
+    public static bool IsLeftEye(ExpressionChannel channel) => channel is ExpressionChannel.EyeSquintLeft or
+        ExpressionChannel.EyeWideLeft or ExpressionChannel.BrowPinchLeft or ExpressionChannel.BrowLowererLeft or
+        ExpressionChannel.BrowInnerUpLeft or ExpressionChannel.BrowOuterUpLeft;
 }
 public sealed record ResolvedEye(float GazeX = 0, float GazeY = 0, float Openness = 1,
     float PupilMillimeters = 3.5f, string GazeOrigin = "neutral", bool RealPupil = false,

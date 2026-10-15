@@ -18,8 +18,6 @@
     "SessionTimeoutMs": 2000,
     "HeaderProfile": null
   },
-  "EyePolicy": "NativePreferred",
-  "OpennessPolicy": "Auto",
   "EyeGain": {
     "LeftX": 1,
     "LeftY": 1,
@@ -27,22 +25,6 @@
     "RightY": 1,
     "LeftOpenness": 1,
     "RightOpenness": 1
-  },
-  "GazeSmoothing": {
-    "Enabled": true,
-    "LightCutoffHz": 100,
-    "HeavyCutoffHz": 4,
-    "Beta": 1,
-    "DualLightCutoffHz": 250,
-    "DualBeta": 8,
-    "DerivativeCutoffHz": 1,
-    "BlinkLow": 0.3,
-    "BlinkHigh": 0.6,
-    "OpennessHigh": 0.8,
-    "OpennessLow": 0.45,
-    "LidConfirmMs": 350,
-    "LidSmoothingMs": 150,
-    "ResetGapMs": 50
   },
   "Stale": {
     "NeutralizeOnTimeout": false,
@@ -52,7 +34,6 @@
   },
   "AllowFallback": false,
   "AutoSelectionWindowMs": 1500,
-  "LegacyPerEyeGaze": false,
   "LegacyExpressionCeiling": false,
   "PostProcessing": {
     "ChannelGain": {

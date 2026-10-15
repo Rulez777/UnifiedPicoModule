@@ -4,58 +4,50 @@
 
 UnifiedPicoConfigTool 是 UnifiedPicoModule 的离线命令行配置工具，提供三项功能：校验新版配置文件、导出默认配置，以及将旧版 PICO 模块的配置迁移为新版配置。
 
-工具只编译 `Core/Contracts.cs` 与 `Configuration` 目录中的源码，不引用 VRCFaceTracking SDK，也不需要 VRCFT 处于运行状态。工具不会安装模块，不会将配置写入模块目录，也不会修改旧配置文件、VRCFT 设置或 Avatar 设置。生成的配置需要在核对后手动替换。
+工具不需要 VRCFaceTracking SDK，也不需要 VRCFT 处于运行状态。工具不会安装模块，不会自动应用配置，也不会修改旧配置文件、VRCFT 设置或 Avatar 设置；它只写入你指定的路径。生成的配置需要在核对后手动替换。
 
 ## 构建
 
-模块包不包含本工具，需要从源码构建。构建需要 .NET 10 SDK，以下命令均在项目根目录执行。
-
-执行 `tools/build.ps1` 时，脚本会在构建模块之后一并构建本工具：
-
-```powershell
-./tools/build.ps1 -Configuration Release
-```
-
-该脚本需要固定版本的 VRCFaceTracking 源码，准备方法请参阅[开发说明](../../docs/development_zh.md)。本工具本身不依赖 SDK，如只需要配置工具，也可以单独构建：
+模块包不包含本工具，需要用 .NET 10 SDK 从源码构建。本工具不依赖 VRCFaceTracking SDK，可以单独构建。以下命令在项目根目录执行：
 
 ```powershell
 dotnet build tools/ConfigTool/ConfigTool.csproj -c Release
+dotnet tools/ConfigTool/bin/Release/net10.0/UnifiedPicoConfigTool.dll --help
 ```
 
 构建产物为 `tools/ConfigTool/bin/Release/net10.0/UnifiedPicoConfigTool.dll`，同目录下还有可直接运行的 `UnifiedPicoConfigTool.exe`。不带参数或使用 `--help`、`-h` 运行时，工具会输出命令语法和可用的来源版本标签。
 
-```powershell
-dotnet tools/ConfigTool/bin/Release/net10.0/UnifiedPicoConfigTool.dll --help
-```
+如果已经为构建模块准备好固定版本的 VRCFaceTracking 源码（参阅[开发说明](../../docs/development_zh.md)），也可以执行 `./tools/build.ps1 -Configuration Release`，一并构建模块和本工具。
 
 ## 使用流程
 
-从旧模块迁移时，建议按以下顺序操作。示例中的 `legacy/` 表示存放旧配置副本的目录，需要自行准备，工具不会扫描或创建该目录。
+迁移前先准备两样东西：
+
+- 旧配置的副本，例如放在 `legacy/` 目录中（工具不会扫描或创建该目录）。
+- 与该文件实际来源一致的来源版本标签；下面的示例使用 `bridge-upstream-0ab66348`，参见[来源版本](#来源版本)。
 
 ```powershell
 $tool = "tools/ConfigTool/bin/Release/net10.0/UnifiedPicoConfigTool.dll"
 
-# 1. 校验现有的新版配置（如有）
+# 可选：校验模块当前已有的配置
 dotnet $tool validate UnifiedPicoModule.json
 
-# 2. 导出一份默认配置，作为对照
+# 可选：导出默认配置，供核对时对照
 dotnet $tool defaults UnifiedPicoModule.defaults.json
 
-# 3. 迁移旧配置，生成新配置与迁移报告
+# 迁移旧配置，生成新配置与迁移报告
 dotnet $tool import legacy/PicoFacialDataModule.json bridge-upstream-0ab66348 UnifiedPicoModule.imported.json migration-report.txt
 
-# 4. 校验迁移结果
+# 校验迁移结果
 dotnet $tool validate UnifiedPicoModule.imported.json
 ```
 
-完成上述步骤后：
+随后手动放置结果：
 
-1. 阅读 `migration-report.txt`，确认其中列出的未导入字段和未复现行为是否可以接受。必要时可以对照第 2 步导出的默认配置修改迁移结果。
+1. 阅读 `migration-report.txt`，确认其中列出的未导入字段和未复现行为是否可以接受。必要时可以对照导出的默认配置修改迁移结果。
 2. 完全退出 VRCFT，备份模块目录中现有的 `UnifiedPicoModule.json`。
 3. 将确认后的配置复制到模块目录，并命名为 `UnifiedPicoModule.json`。模块目录为 `%APPDATA%\VRCFaceTracking\CustomLibs\8322e16d-c38b-42f0-8d35-68f27227b442\`。
 4. 重新启动 VRCFT，在 Output 页面检查是否有关于配置字段的提示。
-
-上述命令仅演示文件操作。示例中的版本标签需要按实际的旧配置来源选择，参见[来源版本](#来源版本)。
 
 ## 命令
 
@@ -65,7 +57,7 @@ dotnet $tool validate UnifiedPicoModule.imported.json
 | `defaults <输出文件>` | 将模型默认值写入一个尚不存在的文件 |
 | `import <旧配置文件> <来源版本> <新配置输出> <报告输出>` | 读取一个旧配置文件，生成新配置和迁移报告 |
 
-命令名为 `defaults`，不存在 `default` 命令。参数数量不符或命令未知时，工具报错并以退出码 1 结束。
+命令未知或参数数量不符时，工具报错并以退出码 1 结束。
 
 ### validate
 
@@ -89,20 +81,13 @@ JSON 语法错误或根节点不是对象时，`validate` 报告失败。模块�
 
 `defaults` 将模型默认值写入指定路径。生成的配置包含全部字段：`ConfigVersion` 为 1，`Bridge.IP`、`Streaming.IP` 和 `Migration` 为 `null`；后处理只启用 `ChannelGain`，其中 EyeWide 左右通道为 2 倍，其他通道为 1 倍，其余 13 条规则关闭。
 
-输出文件必须尚不存在，父目录必须已经存在。工具以 `CreateNew` 方式创建文件，路径已被占用时报错，不会覆盖。
+输出文件必须尚不存在，父目录必须已经存在；路径已被占用时报错，不会覆盖。
 
 ### import
 
-`import` 只读取命令中指定的一个旧配置文件，不扫描其他位置，也不合并多个来源。执行顺序如下：
+`import` 只读取命令中指定的一个旧配置文件，不扫描其他位置，也不合并多个来源。旧配置文件、新配置输出和报告输出必须是三个不同的路径（不区分大小写），两个输出路径都不能已经存在，来源版本必须是支持的标签。上述检查或转换任一失败时，不会写出任何文件，旧配置文件也不会被改动。
 
-1. 确认旧配置文件、新配置输出和报告输出是三个不同的路径（比较完整路径，不区分大小写）。
-2. 确认两个输出路径都不存在文件或目录。
-3. 确认来源版本是工具支持的标签之一。
-4. 读取旧配置并转换。
-5. 以 `CreateNew` 方式创建报告文件，写入迁移报告。
-6. 以 `CreateNew` 方式写入新配置，成功后在报告末尾追加一行 `新配置成功写入：<路径>`。
-
-前四步任一失败时不会写出任何文件。第 6 步失败时，报告文件已经存在，但末尾没有上述确认行，工具不会自动删除它。旧配置文件在任何情况下都不会被修改。
+工具先写迁移报告，再写新配置，成功后在报告末尾追加一行 `新配置成功写入：<路径>`，这一行表示导入已完成。若中途失败，报告以及可能不完整的配置会留在你指定的路径上；请检查它们，需要时保留，然后改用两个未被占用的新路径重试，因为已存在的输出路径不会被覆盖。
 
 退出码 0 只表示两个文件已写入，不表示迁移结果与旧版行为一致，也不表示设备兼容性已经验证。
 
@@ -158,9 +143,9 @@ JSON 语法错误或根节点不是对象时，`validate` 报告失败。模块�
 |---|---|---|
 | `Source` | `Bridge` | `Bridge` |
 | `Bridge.Protocol` | `BridgeSplit` | `DaemonLegacy536` |
-| `EyePolicy` | `NativePreferred` | `LegacyNative` |
-| `LegacyPerEyeGaze` | `false` | `true` |
 | `LegacyExpressionCeiling` | `false` | `false` |
+
+两个标签都不导入旧版的视线与睁眼度来源：迁移结果的视线由 `EyeLook` 形态推算，睁眼度取 `1 - EyeBlink`，差异写入报告。
 
 ### SAFT（`saft-ab500f03`）
 
@@ -173,7 +158,7 @@ JSON 语法错误或根节点不是对象时，`validate` 报告失败。模块�
 
 `scales` 中出现未知键、重复键，或表情通道的值非法、通道重复时，`ChannelGain` 整体关闭。眼动键的值非法时，只有对应的 `EyeGain` 项保持为 1。`scales` 缺失或不是对象时，`ChannelGain` 关闭，`EyeGain` 全部保持为 1。旧版 SAFT 在右眼 Y 轴上误用了 `EyeXGazeLeft` 的值，迁移时右眼 Y 轴使用 `EyeYGazeRight`，不沿用这一错误。
 
-固定设置：`Source` 为 `Streaming`，`Streaming.Protocol` 为 `StreamingHeader16`，`EyePolicy` 为 `BlendshapeOnly`，`LegacyExpressionCeiling` 为 `true`。`Streaming.HeaderProfile` 保持 `null`，即按与 SAFT 一致的宽松条件接收 29765 端口数据。迁移本身不代表该路径已经验证，各发送端的验证情况请参阅[协议参考](../../docs/protocol_zh.md)。
+固定设置：`Source` 为 `Streaming`，`Streaming.Protocol` 为 `StreamingHeader16`，`LegacyExpressionCeiling` 为 `true`。`Streaming.HeaderProfile` 保持 `null`，即按与 SAFT 一致的宽松条件接收 29765 端口数据。迁移本身不代表该路径已经验证，各发送端的验证情况请参阅[协议参考](../../docs/protocol_zh.md)。
 
 ### pike（`pike-c026aa4`）
 
@@ -186,7 +171,7 @@ JSON 语法错误或根节点不是对象时，`validate` 报告失败。模块�
 | `eye_gain` | 格式为 `X,Y`。X 写入 `EyeGain.LeftX` 与 `RightX`，Y 写入 `EyeGain.LeftY` 与 `RightY`。格式不符时保持为 1 |
 | `mode` | 取值 0、1、2，展开为显式的后处理规则与通道增益。mode 0 不启用任何规则；mode 1、2 启用 `ChannelGain` 及若干规则。缺失时按该提交源码的默认值 2 处理；非法或重复时，所有后处理规则保持关闭 |
 
-固定设置：`Source` 为 `Auto`，`EyePolicy` 为 `BlendshapeOnly`。
+固定设置：`Source` 为 `Auto`。
 
 `mode` 只在迁移时展开一次，结果是普通的配置字段，模块运行时不存在隐藏预设。展开所用的规则和系数按本项目规格构造，未在真机上标定，与旧版算法并不逐项等同。各模式展开后的具体参数请参阅[配置说明](../../docs/configuration_zh.md)中的旧配置迁移部分。
 
@@ -203,7 +188,7 @@ JSON 语法错误或根节点不是对象时，`validate` 报告失败。模块�
 - 迁移后校验产生的修正；
 - 所参考的旧项目及固定提交。
 
-迁移转换为本项目的独立实现，只参考了旧项目公开的配置字段和可观察行为，没有复制 SAFT 或 lonelyicer 中许可不明的代码。
+迁移转换为独立实现，只参考了旧项目公开的配置字段和可观察行为。来源与许可请参阅[第三方声明](../../THIRD_PARTY_NOTICES_zh.md)。
 
 ## 文件安全与隐私
 

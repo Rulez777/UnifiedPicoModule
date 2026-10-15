@@ -80,14 +80,6 @@ public static class ConfigStore
                 if (!PopulateRules(config: (PostProcessingSettings)property.GetValue(target)!, member.Value, log)) valid = false;
                 continue;
             }
-            if (property.PropertyType == typeof(GazeSmoothingSettings))
-            {
-                var smoothing = new GazeSmoothingSettings();
-                if (!Populate(smoothing, member.Value, path, log, true))
-                { smoothing.Enabled = false; log($"{path} JSON 配置非法；视线平滑保持关闭。"); valid = false; }
-                property.SetValue(target, smoothing);
-                continue;
-            }
             try
             {
                 if (member.Value.ValueKind == JsonValueKind.Null &&

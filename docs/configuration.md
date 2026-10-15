@@ -34,14 +34,10 @@ Personal configurations and migration reports can contain IP addresses or local 
 | `DisableFaceTracking` | boolean | `false` | | Disables expression output |
 | `Bridge` | object | see [Bridge](#bridge) | | Receiver settings for PicoFacialBridge and PicoFacialDataDaemon (port 9030) |
 | `Streaming` | object | see [Streaming](#streaming) | | Receiver settings for streaming formats (ports 29765 and 29763) |
-| `EyePolicy` | enum | `NativePreferred` | `NativePreferred`, `LegacyNative`, `BlendshapeOnly` | Gaze source policy; see [Eye policy and gain](#eye-policy-and-gain) |
-| `OpennessPolicy` | enum | `Auto` | `Auto`, `BlendshapeOnly`, `NativePreferred` | Openness source policy; see [Eye policy and gain](#eye-policy-and-gain) |
 | `EyeGain` | object | all `1` | | Gain for gaze and openness of each eye |
-| `GazeSmoothing` | object | enabled, mode-specific defaults | | Eyelid-adaptive native gaze smoothing; see [Gaze smoothing](#gaze-smoothing) |
 | `Stale` | object | see [Stale](#stale) | | Data expiry and the neutral pupil value |
 | `AllowFallback` | boolean | `false` | | Whether to switch entirely to the other source when the current one becomes unavailable |
 | `AutoSelectionWindowMs` | integer | `1500` | 100–60000 | How long `Auto` waits preferentially for Bridge after startup (ms) |
-| `LegacyPerEyeGaze` | boolean | `false` | | Treats per-eye gaze in the 536-byte format as independent data; see [Legacy compatibility options](#legacy-compatibility-options) |
 | `LegacyExpressionCeiling` | boolean | `false` | | Caps expression output at 0.99 |
 | `PostProcessing` | object | only `ChannelGain` enabled | | Expression post-processing rules; see [Post-processing](#post-processing) |
 | `Migration` | object or `null` | `null` | | Provenance written by the migration tool; not used at runtime |
@@ -58,7 +54,7 @@ If `ConfigVersion` is missing, duplicated or not 1, the whole configuration is r
 | `Bridge` | Bridge only | Bridge is always used |
 | `Streaming` | Streaming only | Streaming is always used, without waiting |
 
-Usable data means data that arrived within the `Stale` limits and can actually be output under the current `EyePolicy`, `OpennessPolicy` and output toggles. Control heartbeats, packets in which every field is invalid, and packets that merely have an acceptable length do not cause a source to be selected.
+Usable data means data that arrived within the `Stale` limits and contains fields the module can output under the current output toggles. Control heartbeats, packets in which every field is invalid, and packets that merely have an acceptable length do not cause a source to be selected.
 
 Once a source is selected, it stays selected for the rest of the session, even if the other source starts sending data later. The module never combines the two sources, for example eye data from Bridge with expressions from Streaming.
 
@@ -136,47 +132,23 @@ Once a session is established, the module locks onto the address and port of the
 
 All six fields are required. If any field is missing or out of range, the whole `HeaderProfile` is treated as `null` and the problem is logged; reception returns to the default acceptance described above, and port 29763 is not affected.
 
-With a complete `HeaderProfile`, a 29765 datagram must meet the length and `trackingType` conditions and, in addition, all six header fields must match the configured values exactly. The module does not reassemble fragmented data. For the header field offsets, see the [protocol reference](protocol.md#streaming-header-streamingheader16).
+With a complete `HeaderProfile`, a 29765 datagram must meet the length and `trackingType` conditions and, in addition, all six header fields must match the configured values exactly. The module does not reassemble fragmented data. For the header field offsets, see the [protocol reference](protocol.md#streamingheader16-header).
 
-## Eye policy and gain
+## Eye resolution and gain
 
-`EyePolicy` selects the gaze source:
+Gaze and eyelids are always derived from the expression model. A sender's native eye packets are used only for a measured pupil diameter.
 
-| Value | Gaze |
-|---|---|
-| `NativePreferred` | Fixed source by protocol: native gaze for Bridge, `EyeLook`-derived gaze for streaming formats |
-| `LegacyNative` | Native gaze only (per-eye or combined), with no fallback to expression-derived gaze |
-| `BlendshapeOnly` | Gaze derived from the `EyeLook` expressions only |
+The left eye X axis is `EyeLookIn − EyeLookOut`, the right eye X axis is `EyeLookOut − EyeLookIn`, and the Y axis of both eyes is `EyeLookUp − EyeLookDown`; the origin is `blendshape-derived`. Each eye needs all four of its `EyeLookIn`, `EyeLookOut`, `EyeLookUp` and `EyeLookDown` shapes; this is an approximation from expression differences and carries no vergence information.
 
-`OpennessPolicy` selects each eye's openness. VRCFT computes eyelid closure as `EyeClosed = 1 − Openness`:
+Openness is `1 - EyeBlink` of the same eye, with origin `blendshape-blink`. VRCFT computes eyelid closure as `EyeClosed = 1 − Openness`.
 
-| Value | Openness |
-|---|---|
-| `Auto` (default) | Normal mode: only `1 − EyeBlink`. Confirmed enhanced mode: only that eye's native Openness |
-| `BlendshapeOnly` | Always `1 − EyeBlink` |
-| `NativePreferred` | That eye's native Openness |
+Missing, stale or invalid values hold that eye's last valid gaze or openness; before any valid value, gaze is centered and openness is 1. Optional timeout neutralization is configured under [Stale](#stale).
 
-Default configuration:
+Independent-expression `X` packets carry a quality state per eye. A state of 0 holds only that eye's previous output; -1 is unknown and retains the supplied data. The first `X` sample for an eye replaces any previously held ordinary value instead of inheriting it, and after that the eye keeps its own latest valid value.
 
-```json
-{
-  "ConfigVersion": 1,
-  "EyePolicy": "NativePreferred",
-  "OpennessPolicy": "Auto"
-}
-```
+Pupil diameter comes from native eye packets: a valid measured value between 1 and 12 mm is used when present and retained during invalidity by default. `Stale.NeutralPupilMillimeters` is used before any measurement, after an output reset, or after expiry when timeout neutralization is enabled. The module does not estimate pupil size from openness or other data.
 
-`Auto` identifies enhanced mode from Bridge's mode announcement. When the announcement is missing or expired, it uses Blink. Omitting `OpennessPolicy` from the configuration selects `Auto`.
-
-Missing, stale or invalid data from the selected source does not switch sources. Each eye retains its last valid openness by default, or uses 1 before any valid value. Optional timeout neutralization is configured under [Stale](#stale).
-
-Native gaze has a fixed source selected by capability: BridgeSplit uses each eye's own gaze when the headset announces enhanced mode with independent per-eye gaze; DaemonLegacy536 does the same when `LegacyPerEyeGaze` is enabled. Otherwise, combined gaze is used. Invalidity does not switch the selected source; hold and expiry durations are configured under [Stale](#stale). For how capability announcements are evaluated, see the [protocol reference](protocol.md#bridge-control-and-capability-announcement).
-
-When gaze is derived from expressions, the left eye X axis is `EyeLookIn − EyeLookOut`, the right eye X axis is `EyeLookOut − EyeLookIn`, and the Y axis of both eyes is `EyeLookUp − EyeLookDown`. This is an approximation from expression differences and carries no vergence information.
-
-Pupil diameter is handled the same way under all three policies: a valid measured value between 1 and 12 mm is used when present and retained during invalidity by default. `Stale.NeutralPupilMillimeters` is used before any measurement, after an output reset, or after expiry when timeout neutralization is enabled. The module does not estimate pupil size from openness or other data.
-
-With `Source=Auto`, the module uses both policies to determine which eye fields are usable when selecting a source.
+With `Source=Auto`, a native eye packet counts as usable when it contains a valid measured pupil, and shape data counts when it can produce expressions or derive gaze and openness.
 
 The six `EyeGain` fields apply to the gaze X and Y axes and the openness of each eye:
 
@@ -189,66 +161,20 @@ Out-of-range or non-finite values fall back to 1. After the gain is applied, gaz
 
 `LeftOpenness` and `RightOpenness` multiply openness. With a gain above 1, clamping can keep the output fully open during slight closure; keep these at 1 when investigating eyelid response.
 
-## Gaze smoothing
-
-`GazeSmoothing.Enabled` defaults to `true`. Omitting the section also enables the mode-specific defaults below. To disable it, add `"GazeSmoothing": { "Enabled": false }` at the root of the configuration. Explicitly saved values take precedence; omitted fields use this version's defaults. Configuration changes take effect at the next module initialization.
-
-To restore all defaults in this section, back up the configuration, remove `GazeSmoothing` and restart VRCFT.
-
-The filter processes each eye's native gaze XY before `EyeGain`. Strength changes continuously with eyelid state: open eyes retain more small movements, while half-open eyes receive stronger smoothing. Stronger filtering generally follows eye movements more slowly. Expression-derived gaze uses its existing output path. This section controls gaze; `OpennessPolicy` controls eyelid output. See the [README compatibility section](../README.md#compatibility) for validation status.
-
-| Field | Type | Default | Valid values | Meaning |
-|---|---|---|---|---|
-| `Enabled` | boolean | `true` | `true` / `false` | Enable smoothing |
-| `LightCutoffHz` | number | `100` | 0.01–1000 | Minimum cutoff at eyelid weight 0; larger values follow input faster |
-| `HeavyCutoffHz` | number | `4` | 0.01–1000, ≤ `LightCutoffHz` | Minimum cutoff at weight 1; smaller values smooth more strongly |
-| `Beta` | number | `1` | 0–100 | Increase cutoff in proportion to the smoothed XY derivative norm |
-| `DualLightCutoffHz` | number or `null` | `250` | 0.01–1000, ≥ `HeavyCutoffHz` | Dual per-eye light cutoff; omission uses 250, explicit `null` inherits `LightCutoffHz` |
-| `DualBeta` | number or `null` | `8` | 0–100 | Dual per-eye speed coefficient; omission uses 8, explicit `null` inherits `Beta` |
-| `DerivativeCutoffHz` | number | `1` | 0.01–1000 | Cutoff for smoothing the input derivative |
-| `BlinkLow` | number | `0.30` | 0–1, < `BlinkHigh` | Combined gaze: smoothed Blink at weight 0 |
-| `BlinkHigh` | number | `0.60` | 0–1, > `BlinkLow` | Combined gaze: smoothed Blink at weight 1 |
-| `OpennessHigh` | number | `0.80` | 0–1, > `OpennessLow` | Per-eye gaze: smoothed openness at weight 0 |
-| `OpennessLow` | number | `0.45` | 0–1, < `OpennessHigh` | Per-eye gaze: smoothed openness at weight 1 |
-| `LidConfirmMs` | integer | `350` | 0–2000 | Rolling source-time window for confirming closure; 0 bypasses confirmation |
-| `LidSmoothingMs` | integer | `150` | 0–5000 | Exponential smoothing time constant for the confirmed eyelid value, the same for closing and opening; 0 uses the confirmed value directly |
-| `ResetGapMs` | integer | `50` | 1–5000 | Reinitialize gaze and clear its derivative after a longer gap between valid observations |
-
-### Adjusting strength
-
-- Raise the light cutoff to retain more small open-eye movements; lower the heavy cutoff for stronger half-open smoothing.
-- Raise `Beta` to reduce filtering during fast eye movements and follow them faster. This also passes more rapid fluctuations.
-- Use `BlinkLow/High` for normal mode and `OpennessHigh/Low` for dual. Filtering transitions continuously between the endpoints; closer endpoints concentrate the change in strength.
-
-Normal mode uses `LightCutoffHz` and `Beta`; dual uses `DualLightCutoffHz` and `DualBeta`. Omitted dual fields use the table defaults, while explicit `null` inherits the corresponding normal value. Heavy cutoff, derivative cutoff and timing settings are shared.
-
-### Processing order
-
-1. **Read the eyelid value.** Normal mode uses recent valid `max(EyeBlinkL, EyeBlinkR)`; dual uses the eye's own same-frame valid openness. Blink must belong to the same session, satisfy `Stale.FaceMs`, and have a source timestamp within `min(250 ms, Stale.FaceMs)` of the eye frame.
-2. **Confirm closure.** Take the most-open value in the last `LidConfirmMs`: minimum Blink or maximum openness. While open-eye history remains, a short blink does not trigger heavy filtering. Set 0 to skip confirmation.
-3. **Smooth eyelids and map strength.** Exponentially smooth the confirmed value over `LidSmoothingMs` to obtain `s`. Compute `q=(s-BlinkLow)/(BlinkHigh-BlinkLow)` in normal mode or `q=(s-OpennessHigh)/(OpennessLow-OpennessHigh)` in dual. Clamp `q` to 0–1 and use weight `q*q*(3-2*q)`.
-4. **Smooth gaze.** With the current mode's `light` and `beta`, the cutoff is `light * (HeavyCutoffHz/light)^weight + beta * norm(derivativeXY)`. Update gaze with the OneEuro coefficient `alpha=1/(1+1/(2*pi*cutoff*dt))`.
-
-Eyelid smoothing starts at the first valid value, then uses `s += (1-exp(-deltaMs/LidSmoothingMs))*(confirmed-s)`. Invalid eyelids retain their state; valid eyelids still update when gaze is invalid. A confirmation window shorter than the configured duration uses the available samples, and opening immediately affects the confirmed value.
-
-Timing uses the source timestamps of observed frames. Duplicate or reordered frames are skipped, and invalid gaze holds output. A valid-gaze gap longer than `ResetGapMs` adopts the new input directly and clears the derivative while retaining eyelid state. Source, session or mode changes reset the whole filter; timeout output retention follows `Stale.NeutralizeOnTimeout`. The legacy 536 format has no reliable source clock and bypasses filtering.
-
-Malformed, unknown or duplicate fields, out-of-range values and invalid endpoint ordering disable smoothing and produce diagnostics. The configuration tool applies the same validation; legacy-module imports explicitly disable the added smoothing.
-
 ## Stale
 
 | Field | Type | Default | Valid values | Description |
 |---|---|---|---|---|
 | `NeutralizeOnTimeout` | boolean | `false` | `true` / `false` | Replace expired output with neutral values; when disabled, retain the last output |
-| `EyeMs` | integer | `250` | 1–5000 | How long native eye data remains valid (ms) |
+| `EyeMs` | integer | `250` | 1–5000 | How long a measured pupil from native eye data remains valid (ms) |
 | `FaceMs` | integer | `250` | 1–5000 | How long expression data remains valid (ms) |
 | `NeutralPupilMillimeters` | number | `3.5` | 1–10 | Pupil diameter output when no valid measurement is available (mm) |
 
 Out-of-range values fall back to the defaults. Ages are measured from the time the PC received the data; sender timestamps are not used.
 
-`NeutralizeOnTimeout` defaults to `false`, including in existing configurations that omit it. Expired gaze, openness and pupil measurements retain their last valid values, and expired expressions retain their last output. With `true`, expression output goes to zero after `FaceMs`; gaze returns to center and openness becomes 1 after `EyeMs` for native values or `FaceMs` for expression-derived values; measured pupil diameter returns to `NeutralPupilMillimeters` after `EyeMs`.
+`NeutralizeOnTimeout` defaults to `false`, including in existing configurations that omit it. Expired gaze, openness and pupil measurements retain their last valid values, and expired expressions retain their last output. With `true`, expression output goes to zero after `FaceMs`; gaze returns to center and openness becomes 1 after `FaceMs`; measured pupil diameter returns to `NeutralPupilMillimeters` after `EyeMs`.
 
-The freshness limits still apply to source selection and accepting input, and stale input resets post-processing timing state. Connection and mode-announcement timeouts retain output when neutralization is disabled. A new session, source or mode, module deactivation, and teardown reset output. An explicitly invalid region in a new expression frame still clears its mapped channels; this is separate from timeout handling.
+The freshness limits still apply to source selection and accepting input, and stale input resets post-processing timing state. Connection and mode-announcement timeouts retain output when neutralization is disabled. A new session, source or mode, module deactivation, and teardown reset output. An explicitly invalid region in an ordinary expression frame clears its mapped channels. In independent `X` frames, an eye with quality state 0 instead retains its own independent history, subject to timeout neutralization; before that eye has a valid independent sample, its expression channels are zero, gaze is centered and openness is 1.
 
 The `MissingFrames` state in the log always appears 250 ms after data stops and is not affected by these settings.
 
@@ -256,10 +182,9 @@ The `MissingFrames` state in the log always appears 250 ms after data stops and 
 
 | Field | Default | Effect |
 |---|---|---|
-| `LegacyPerEyeGaze` | `false` | Applies to DaemonLegacy536 only. When enabled, the left and right gaze in the 536-byte format are used as independent per-eye data; when disabled, only the combined gaze is used |
 | `LegacyExpressionCeiling` | `false` | When enabled, expression output is capped at 0.99 instead of 1. Gaze and openness are not affected |
 
-These options bring migrated behavior closer to the earlier modules. The migration tool enables the first for `bridge-upstream-0ab66348` and the second for `saft-ab500f03`. New installations do not need them.
+This option brings migrated behavior closer to the earlier modules. The migration tool enables it for `saft-ab500f03`. New installations do not need it.
 
 ## Post-processing
 
@@ -273,7 +198,7 @@ Only `ChannelGain` is enabled by default. Its fields are:
 | `DefaultGain` | number | `1` | 0–10 | Gain for channels not listed in `Gains` |
 | `Gains` | object | `EyeWideLeft` and `EyeWideRight` 2; `EyeSquintLeft`, `EyeSquintRight` and `JawOpen` 1 | 0–10 each | Per-channel gain |
 
-When `Gains` is written in the configuration, it replaces the default channel list as a whole, and channels not listed (including EyeWide) use `DefaultGain`. The keys of `Gains` are expression channel names and are matched case-insensitively; for the available channels, see the [post-processing reference](postprocessing.md#supported-channelgain-channels). If a key is not recognized, is duplicated (ignoring case), or has an out-of-range value, the entire `ChannelGain` rule is disabled. With `ChannelGain` disabled, every channel is output at a gain of 1, which also removes the default EyeWide ×2 compensation.
+When `Gains` is written in the configuration, it replaces the default channel list as a whole, and channels not listed (including EyeWide) use `DefaultGain`. The keys of `Gains` are expression channel names and are matched case-insensitively; for the available channels, see the [post-processing reference](postprocessing.md#available-channels). If a key is not recognized, is duplicated (ignoring case), or has an out-of-range value, the entire `ChannelGain` rule is disabled. With `ChannelGain` disabled, every channel is output at a gain of 1, which also removes the default EyeWide ×2 compensation.
 
 The other 13 rules are disabled by default. For their parameters, ranges and execution order, see the [post-processing reference](postprocessing.md).
 
@@ -318,14 +243,14 @@ Use `UnifiedPicoConfigTool` with an earlier configuration file and its source ve
 
 | Source version | Earlier configuration file | Main resulting settings |
 |---|---|---|
-| `bridge-current-0.1-beta-split-fix1` | `PicoFacialDataModule.json` from the split fork of PicoFacialDataModule | `Source=Bridge`, `Bridge.Protocol=BridgeSplit`, `EyePolicy=NativePreferred`; `ShapeGain` becomes `ChannelGain` |
-| `bridge-upstream-0ab66348` | `PicoFacialDataModule.json` from upstream PicoFacialDataModule | `Source=Bridge`, `Bridge.Protocol=DaemonLegacy536`, `EyePolicy=LegacyNative`, `LegacyPerEyeGaze=true` |
-| `saft-ab500f03` | `PicoModuleConfig.json` from SAFT | `Source=Streaming`, `Streaming.Protocol=StreamingHeader16`, `EyePolicy=BlendshapeOnly`, `LegacyExpressionCeiling=true`; `scales` is split into `ChannelGain` and `EyeGain` |
-| `pike-c026aa4` | `config.ini` from the pike branch | `Source=Auto`, `EyePolicy=BlendshapeOnly`; `eye_gain` becomes `EyeGain`, and `mode` is expanded into post-processing rules |
+| `bridge-current-0.1-beta-split-fix1` | `PicoFacialDataModule.json` from the split fork of PicoFacialDataModule | `Source=Bridge`, `Bridge.Protocol=BridgeSplit`; `ShapeGain` becomes `ChannelGain` |
+| `bridge-upstream-0ab66348` | `PicoFacialDataModule.json` from upstream PicoFacialDataModule | `Source=Bridge`, `Bridge.Protocol=DaemonLegacy536` |
+| `saft-ab500f03` | `PicoModuleConfig.json` from SAFT | `Source=Streaming`, `Streaming.Protocol=StreamingHeader16`, `LegacyExpressionCeiling=true`; `scales` is split into `ChannelGain` and `EyeGain` |
+| `pike-c026aa4` | `config.ini` from the pike branch | `Source=Auto`; `eye_gain` becomes `EyeGain`, and `mode` is expanded into post-processing rules |
 
 Both Bridge source versions migrate `DisableEyeTracking`, `DisableFaceTracking` and `IP`; pike's `eye-tracking` and `expression-tracking` map to the same two toggles.
 
-Migration sets `OpennessPolicy=Auto`, selecting openness according to the current module's normal / enhanced mode policy. The difference is recorded in the migration report.
+The earlier gaze and openness source choices are not imported; the migrated configuration uses the expression-driven behavior described under [Eye resolution and gain](#eye-resolution-and-gain), and the difference is recorded in the migration report.
 
 The migrated configuration differs from a fresh default configuration in the following ways:
 

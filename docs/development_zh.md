@@ -69,7 +69,7 @@ git -C .sdk/source/VRCFaceTracking switch --detach 2cafd0e387386b54997797ee4709c
 ### UnifiedPicoModule.csproj
 
 - 目标框架 `net10.0`，启用可空引用类型和隐式 using，所有警告视为错误。
-- 版本号由 `Version` 属性指定，当前为 `0.2.0`。
+- 版本号由 `Version` 属性指定，当前为 `0.3.0`。
 - 通过 `HintPath` 引用 `$(VrcftSdkDir)` 下的 `VRCFaceTracking.SDK.dll` 和 `VRCFaceTracking.Core.dll`，并设置 `Private=false`，因此这两个 DLL 不会复制到输出目录。`VrcftSdkDir` 默认为仓库内的 `.sdk`，也可以通过 MSBuild 属性覆盖。
 - `CheckSdk` 目标在解析引用前检查这两个 DLL 是否存在，并要求程序集版本为 `5.4.5.0`。
 - 引用 `Microsoft.Extensions.Logging.Abstractions` 10.0.1，设置为 `PrivateAssets="all"`。
@@ -93,7 +93,7 @@ VRCFT 读取的模块元数据，包含以下字段：
 | 字段 | 当前值或说明 |
 |---|---|
 | `ModuleId` | `8322e16d-c38b-42f0-8d35-68f27227b442`，同时决定模块在 `CustomLibs` 下的目录名 |
-| `Version` | `0.2.0`，必须与 `UnifiedPicoModule.csproj` 中的版本一致 |
+| `Version` | `0.3.0`，必须与 `UnifiedPicoModule.csproj` 中的版本一致 |
 | `ModuleName` | `Unified PICO Face Tracking` |
 | `ModuleDescription` / `UsageInstructions` | 模块列表中显示的说明文字 |
 | `DownloadUrl` | 当前为空 |
@@ -149,11 +149,11 @@ VRCFT 读取的模块元数据，包含以下字段：
 4. 提交并推送上述修改，然后为该提交创建并推送标签：
 
 ```powershell
-git tag -a v0.2.0 -m "UnifiedPicoModule 0.2.0"
-git push origin v0.2.0
+git tag -a v0.3.0 -m "UnifiedPicoModule 0.3.0"
+git push origin v0.3.0
 ```
 
-标签格式为 `vMAJOR.MINOR.PATCH`，可以附加 SemVer 预发布后缀，例如 `v0.2.0-rc.1`。不接受 `+build` 构建元数据，数字部分和数字型预发布标识不允许前导零。
+标签格式为 `vMAJOR.MINOR.PATCH`，可以附加 SemVer 预发布后缀，例如 `v0.3.0-rc.1`。不接受 `+build` 构建元数据，数字部分和数字型预发布标识不允许前导零。
 
 ### 构建任务
 
@@ -205,7 +205,7 @@ docs/            公开文档
 | `Core` | 枚举（数据源、协议、连接状态、PICO 表情、模块输出通道等）、单调时钟、原始眼动与面部数据、数据源快照和模块输出模型。数据源快照为不可变对象 |
 | `Protocol` | 四种线格式的解码器：`BridgeSplitDecoder`、`DaemonLegacyDecoder`、`Header16Decoder` 和 `BodyOnlyDecoder`，以及 Bridge 控制报文的生成与解析（`BridgeControl`） |
 | `Transport` | `UdpTrackingSource` 负责套接字绑定、后台接收线程、时间戳去重、丢包计数和日志限流。`BridgeUdpSource` 实现 9030 端口的发现、心跳、通道订阅与对端锁定，`StreamingUdpSource` 实现 29765 和 29763 端口的接收与本机来源限制 |
-| `Mapping` | `NeutralFaceMapper` 将 PICO 表情映射为模块输出通道，`EyeResolver` 按眼动策略优先使用原生视线，必要时由表情推算视线 |
+| `Mapping` | `NeutralFaceMapper` 将 PICO 表情映射为模块输出通道，`EyeResolver` 由 `EyeLook` 形态推算每眼视线、由 `1 - EyeBlink` 得到睁眼度，并解析实测瞳孔直径 |
 | `Processing` | `PostProcessor` 按固定顺序执行可选的后处理规则，并维护规则所需的时间状态 |
 | `Configuration` | `ModuleConfig` 与 `PostProcessingSettings` 定义配置模型及默认值，`ConfigStore` 负责读取和写入，`ConfigValidator` 负责校验和回退，`LegacyImporter` 负责旧配置的只读迁移 |
 | `Runtime` | `SourceCoordinator` 创建数据源并选定其中一个，`TrackingPipeline` 将选定的快照转换为输出并处理数据过期，`DiagnosticReporter` 每 5 秒输出状态日志 |
