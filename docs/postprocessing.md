@@ -6,6 +6,8 @@ This document describes each rule under `PostProcessing`: what it does, its para
 
 ## Overview
 
+For `X` v2, new left-eye, right-eye and mouth groups are processed separately. Mouth temporal state advances only on a new mouth sample; intervening eye updates cannot restart a tongue hold or apply mouth gain again. Each group follows its own freshness and the configured timeout behavior.
+
 Post-processing sits between the neutral mapping and VRCFT output. When a new face sample arrives, the module first converts the PICO expressions to VRCFT expression channels through the neutral mapping, then runs the enabled rules in order, and finally clamps the result before handing it to VRCFT. Between face samples, the module reuses the result of the previous sample; the only change that can occur between samples is the expiry of a `TongueHold` hold.
 
 The default configuration enables only `ChannelGain`, and uses it only to multiply `EyeWideLeft` and `EyeWideRight` by 2. All other channels have a gain of 1, and the other 13 rules are disabled. Post-processing applies only to expression channels. Gaze, eye openness and pupil diameter are handled separately by eye resolution and are not affected.

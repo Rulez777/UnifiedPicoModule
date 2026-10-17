@@ -14,7 +14,7 @@ UnifiedPicoModule is a PICO eye and face tracking module for VRCFaceTracking (VR
 
 Tracking data from a PICO headset can be delivered by several senders, including PicoFacialBridge, PICO Connect, Streaming Assistant and the earlier PicoFacialDataDaemon. Each sender uses its own data format and port. This module supports all of these formats, detects which source is currently available, and forwards its data to VRCFT through a single output, so there is no need to install a separate module for each sender.
 
-> The current version is 0.3.0, built against VRCFT 5.4.5 (net10.0). See [Compatibility](#compatibility) for which combinations have been verified and the [changelog](CHANGELOG.md) for version changes.
+> The current version is 0.4.0, built against VRCFT 5.4.5 (net10.0). See [Compatibility](#compatibility) for which combinations have been verified and the [changelog](CHANGELOG.md) for version changes.
 
 ## Supported senders
 
@@ -25,7 +25,7 @@ Tracking data from a PICO headset can be delivered by several senders, including
 | Headerless streaming format (e.g. Streaming Assistant) | 29763 | Gaze and eyelids from the expression model | Supported |
 | PicoFacialDataDaemon (536-byte format) | 9030 | Gaze and eyelids from the expression model; measured pupil diameter when valid | Supported |
 
-PicoFacialBridge is the recommended sender: it provides a measured pupil diameter and sends only the channels the PC has subscribed to. Independent per-eye expressions (`X` packets) need PicoFacialBridge 0.4.0 or later and [PicoET-Enhance](https://github.com/WolalaQAQ/PicoET-Enhance) 2.2.0 or later on the headset, together with this module 0.3.0 or later. Normal mode needs no enhancement module and accepts Bridge 0.3.0 or later. If you already stream with PICO Connect, the module can also receive face tracking directly on port 29765, with gaze derived from the `EyeLook` expressions.
+PicoFacialBridge is the recommended sender: it provides a measured pupil diameter and sends only the channels the PC has subscribed to. Independent per-eye expressions (`X` packets) need PicoFacialBridge 0.4.0 or later and [PicoET-Enhance](https://github.com/WolalaQAQ/PicoET-Enhance) 2.2.0 or later on the headset, together with this module 0.3.0 or later. The high-rate `X` v2 path, which keeps the left eye, right eye and mouth on separate clocks, needs PicoFacialBridge 0.5.0 or later, PicoET-Enhance 2.3.0 or later and this module 0.4.0 or later. Normal mode needs no enhancement module and accepts Bridge 0.3.0 or later. If you already stream with PICO Connect, the module can also receive face tracking directly on port 29765, with gaze derived from the `EyeLook` expressions.
 
 ## Installation
 
@@ -80,6 +80,8 @@ Gaze is always derived from each eye's `EyeLookIn`, `EyeLookOut`, `EyeLookUp` an
 
 Independent brow values require an avatar that consumes separate left/right brow parameters. VRCFT's combined `v2/BrowInnerUp` averages them, so left=1 and right=0 produces 0.5 before any bit encoding. The module preserves the separate values and uses the official VRCFT parameter rules.
 
+With a matching `X` v2 sender, left-eye, right-eye and mouth observations update and expire independently. Eye updates keep the last mouth result without processing it again. See the [protocol reference](docs/protocol.md#x-independent-eye-expressions) for v1/v2 layouts.
+
 ### Source selection
 
 When `Source` is `Auto`, the module listens on both the Bridge and streaming ports. For the first 1.5 seconds after startup it waits preferentially for Bridge data; after that, it adopts whichever source first delivers valid data. Once a source has been selected, it remains in use for the rest of the session, even if the other source starts sending data later. The module never combines data from both sources, for example eye tracking from one and face tracking from the other.
@@ -104,11 +106,14 @@ The main fields are:
 | `state` | `Connected`: connected and receiving data. `MissingFrames`: the peer is online but data has stopped, for example because the headset is asleep or the sender is paused. `Searching`: no peer has been found yet |
 | `selected` | Whether this is the source currently in use |
 | `E/morphology` | Receive rates of eye data and expression data |
+| `groupRxHzLRM` | Accepted left-eye/right-eye/mouth rates for `X` v2; `CONSUMPTION` separately reports processing and SDK writes, not OSC or Avatar refresh rates |
 | `Eye origin` | Where the current or held gaze comes from. `blendshape-derived`: derived from the `EyeLook` shapes. `neutral`: no retained value, or timeout neutralization is enabled and the value has expired |
 | `openness` | Where the current or held openness comes from. `blendshape-blink`: computed as `1 - EyeBlink`. `neutral`: no retained value, or timeout neutralization is enabled and the value has expired |
 | `pupil` | `measured` is a measured pupil diameter; `estimated` means the default of 3.5 mm is used |
 
 With PICO Connect, the log shows the source as `Streaming/StreamingHeader16`; the gaze origin is `blendshape-derived` for every sender.
+
+VRCFT does not need to stay in the foreground. While tracking, the module keeps official VRCFT's timer-resolution request effective in the background. On stop or failure, it restores only the original `IGNORE_TIMER_RESOLUTION` control/state bits, preserving other current process-policy settings.
 
 By default, expired data retains the last gaze, openness, pupil diameter and expression output. Set `Stale.NeutralizeOnTimeout=true` to restore timeout neutralization: gaze returns to center, eyes open, pupil diameter uses the neutral value, and expressions go to zero after the configured expiry limits.
 
@@ -185,11 +190,12 @@ The following input configurations have been verified on a PICO 4 Pro:
 
 | Sender | Verified |
 |---|---|
-| PicoFacialBridge 0.4.0 with PicoET-Enhance 2.2.0 (enhanced mode, independent `X` packets) | Dual-channel reception on official VRCFT 5.4.5 with `Connected` and `enhance=True independent=True`; expression-derived gaze, Blink-derived eyelids and measured pupils; channel subscription and eye and face toggles |
+| PicoFacialBridge 0.5.0 with PicoET-Enhance 2.3.0 (enhanced mode, `X` v2 packets) | Worn Virtual Desktop session with Cymple mouth tracking and PICO eye tracking, plus eye-only and combined PICO tracking, on official VRCFT 5.4.5; about 89.7 `X` packets per second from the Bridge, each with a new eye source. The rate that reaches OSC depends on the VRCFT host; see [About 90 Hz OSC](https://github.com/WolalaQAQ/PicoET-Enhance#about-90-hz-osc) |
+| PicoFacialBridge 0.4.0 with PicoET-Enhance 2.2.0 (enhanced mode, independent `X` v1 packets) | Dual-channel reception on official VRCFT 5.4.5 with `Connected` and `enhance=True independent=True`; expression-derived gaze, Blink-derived eyelids and measured pupils; channel subscription and eye and face toggles |
 | PicoFacialBridge 0.3.0 (BridgeSplit) | Channel subscription, eye and face toggles, reconnection after an application restart, and avatar expression tracking |
 | PICO Connect 10.6.6 (`faceTrackingTransferProtocol=2`, port 29765) | Face data at about 72 Hz with no packet loss; avatar tracking works as expected |
 
-The enhanced path was exercised with eye images recorded earlier and replayed on the headset through native eye inference. The recording is about 23.7 Hz and was replayed in an accelerated loop, so it shows inference throughput and delivery rather than a real 90 Hz camera sequence. Long live-camera sessions and single-eye quality failure (state 0) have not been covered. Results from other input configurations are welcome in issues.
+The `X` v1 path was exercised with eye images recorded earlier and replayed on the headset through native eye inference at about 23.7 Hz in an accelerated loop. The `X` v2 path was exercised with a worn Virtual Desktop session of 84 seconds. Long sessions and single-eye quality failure (state 0) have not been covered. Results from other input configurations are welcome in issues.
 
 ## Network security and privacy
 
@@ -203,7 +209,7 @@ Building requires Windows, PowerShell, the .NET 10 SDK and Git. The module is co
 
 ```powershell
 git clone https://github.com/benaclejames/VRCFaceTracking.git .sdk/source/VRCFaceTracking
-git -C .sdk/source/VRCFaceTracking switch --detach 2cafd0e387386b54997797ee4709cad4befe9274
+git -C .sdk/source/VRCFaceTracking switch --detach 7add14873e398c4095d06913cdeee7a01fc43fab
 
 ./tools/build.ps1 -Configuration Release
 ./tools/package.ps1

@@ -137,8 +137,8 @@ SOFTWARE.
 
 - Author: benaclejames
 - Repository: https://github.com/benaclejames/VRCFaceTracking
-- Development baseline: [`2cafd0e387386b54997797ee4709cad4befe9274`](https://github.com/benaclejames/VRCFaceTracking/tree/2cafd0e387386b54997797ee4709cad4befe9274), net10.0, AssemblyVersion 5.4.5.0
-- License: Apache-2.0, see the [LICENSE at the pinned commit](https://github.com/benaclejames/VRCFaceTracking/blob/2cafd0e387386b54997797ee4709cad4befe9274/LICENSE) and the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)
+- Development baseline: [`7add14873e398c4095d06913cdeee7a01fc43fab`](https://github.com/benaclejames/VRCFaceTracking/tree/7add14873e398c4095d06913cdeee7a01fc43fab), net10.0, AssemblyVersion 5.4.5.0
+- License: Apache-2.0, see the [LICENSE at the pinned commit](https://github.com/benaclejames/VRCFaceTracking/blob/7add14873e398c4095d06913cdeee7a01fc43fab/LICENSE) and the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)
 - Copyright notice: the license's copyright appendix reads Copyright 2024 benaclejames
 - Use: references to the SDK / Core interfaces.
 
@@ -171,7 +171,7 @@ This project introduces no third-party icons or images, and the documentation us
 - [SAFT pinned source tree](https://github.com/regzo2/PicoStreamingAssistantFTUDP/tree/ab500f0355cd8bbf8f9f5b4e6bcfe43d16499cb7)
 - [pike LICENSE](https://github.com/pikepikeid/VRCFTPicoModule/blob/c026aa455da60dd50492b3d36c9d360d0c343b8e/LICENSE)
 - [lonelyicer research snapshot](https://github.com/lonelyicer/VRCFTPicoModule/tree/5046c9b726e33e461e7f389c73d94db26ae7c7f8)
-- [VRCFT pinned commit](https://github.com/benaclejames/VRCFaceTracking/tree/2cafd0e387386b54997797ee4709cad4befe9274)
+- [VRCFT pinned commit](https://github.com/benaclejames/VRCFaceTracking/tree/7add14873e398c4095d06913cdeee7a01fc43fab)
 - [Protocol offsets and capability boundaries](docs/protocol.md), [migration and unreproduced differences](docs/configuration.md), [independent post-processing semantics](docs/postprocessing.md)
 
 ## Trademarks

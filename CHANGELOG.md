@@ -2,6 +2,23 @@
 
 English | [简体中文](CHANGELOG_zh.md)
 
+## [0.4.0] - 2026-10-17
+
+### Features
+- Accept BridgeSplit `X` v2 with separate left-eye, right-eye and mouth source clocks, update bits, reception sequences and freshness.
+- Report per-group reception, processing and coalescing, plus new versus repeated SDK writes and timing distributions.
+- Keep the module process's timer resolution effective when VRCFT runs in the background. In testing this restored the module's consumption rate to about 90 Hz.
+
+### Design Rationale
+- Process only groups with a new source sample. Fast eye updates retain mouth output without rerunning mouth smoothing, tongue holds or channel gain.
+- Save the module process's Windows timer policy and clear only `IGNORE_TIMER_RESOLUTION` while tracking. On stop or failure, restore only that bit's original control/state settings, preserving other current policy bits. This keeps official VRCFT 5.4.5's timer request effective in the background without changing priorities or CPU throttling. It applies to the module's own sandbox process only; the VRCFT host process is not touched.
+- Build against the official VRCFaceTracking release commit `7add148` (the Steam build, assembly 5.4.5.0) instead of a later upstream commit. The module code and its output are identical under both.
+
+### Notes & Caveats
+- `X` v1 and existing formats remain supported; `X` v2 requires PicoFacialBridge 0.5.0 or later and PicoET-Enhance 2.3.0 or later. Configuration defaults, expression-derived gaze/eyelids and measured-pupil handling are unchanged.
+- Validated on a PICO 4 Pro with official VRCFT 5.4.5 in an 84-second worn Virtual Desktop session (Cymple mouth with PICO eyes), plus eye-only and combined PICO tracking. About 89.7 `X` packets per second arrived with a new eye source each. This was a short session, not a long-duration stability test.
+- SDK write counts are not OSC or Avatar refresh rates. The official host passes module output to OSC at roughly 61–78 Hz; the patch described in the PicoET-Enhance README raises that to about 87–88 Hz.
+
 ## [0.3.0] - 2026-10-15
 
 ### Features

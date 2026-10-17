@@ -17,11 +17,11 @@
 
 ### 准备 SDK 源码
 
-模块基于 VRCFaceTracking 提交 `2cafd0e387386b54997797ee4709cad4befe9274` 编译，对应程序集版本 `5.4.5.0`，目标框架 `net10.0`。在仓库根目录执行：
+模块基于 VRCFaceTracking 提交 `7add14873e398c4095d06913cdeee7a01fc43fab` 编译，对应程序集版本 `5.4.5.0`，目标框架 `net10.0`。在仓库根目录执行：
 
 ```powershell
 git clone https://github.com/benaclejames/VRCFaceTracking.git .sdk/source/VRCFaceTracking
-git -C .sdk/source/VRCFaceTracking switch --detach 2cafd0e387386b54997797ee4709cad4befe9274
+git -C .sdk/source/VRCFaceTracking switch --detach 7add14873e398c4095d06913cdeee7a01fc43fab
 ```
 
 `.sdk/` 是本地缓存目录，已被 `.gitignore` 排除。
@@ -69,7 +69,7 @@ git -C .sdk/source/VRCFaceTracking switch --detach 2cafd0e387386b54997797ee4709c
 ### UnifiedPicoModule.csproj
 
 - 目标框架 `net10.0`，启用可空引用类型和隐式 using，所有警告视为错误。
-- 版本号由 `Version` 属性指定，当前为 `0.3.0`。
+- 版本号由 `Version` 属性指定，当前为 `0.4.0`。
 - 通过 `HintPath` 引用 `$(VrcftSdkDir)` 下的 `VRCFaceTracking.SDK.dll` 和 `VRCFaceTracking.Core.dll`，并设置 `Private=false`，因此这两个 DLL 不会复制到输出目录。`VrcftSdkDir` 默认为仓库内的 `.sdk`，也可以通过 MSBuild 属性覆盖。
 - `CheckSdk` 目标在解析引用前检查这两个 DLL 是否存在，并要求程序集版本为 `5.4.5.0`。
 - 引用 `Microsoft.Extensions.Logging.Abstractions` 10.0.1，设置为 `PrivateAssets="all"`。
@@ -93,7 +93,7 @@ VRCFT 读取的模块元数据，包含以下字段：
 | 字段 | 当前值或说明 |
 |---|---|
 | `ModuleId` | `8322e16d-c38b-42f0-8d35-68f27227b442`，同时决定模块在 `CustomLibs` 下的目录名 |
-| `Version` | `0.3.0`，必须与 `UnifiedPicoModule.csproj` 中的版本一致 |
+| `Version` | `0.4.0`，必须与 `UnifiedPicoModule.csproj` 中的版本一致 |
 | `ModuleName` | `Unified PICO Face Tracking` |
 | `ModuleDescription` / `UsageInstructions` | 模块列表中显示的说明文字 |
 | `DownloadUrl` | 当前为空 |
@@ -149,11 +149,11 @@ VRCFT 读取的模块元数据，包含以下字段：
 4. 提交并推送上述修改，然后为该提交创建并推送标签：
 
 ```powershell
-git tag -a v0.3.0 -m "UnifiedPicoModule 0.3.0"
-git push origin v0.3.0
+git tag -a v0.4.0 -m "UnifiedPicoModule 0.4.0"
+git push origin v0.4.0
 ```
 
-标签格式为 `vMAJOR.MINOR.PATCH`，可以附加 SemVer 预发布后缀，例如 `v0.3.0-rc.1`。不接受 `+build` 构建元数据，数字部分和数字型预发布标识不允许前导零。
+标签格式为 `vMAJOR.MINOR.PATCH`，可以附加 SemVer 预发布后缀，例如 `v0.4.0-rc.1`。不接受 `+build` 构建元数据，数字部分和数字型预发布标识不允许前导零。
 
 ### 构建任务
 

@@ -14,7 +14,7 @@ UnifiedPicoModule 是面向 VRCFaceTracking（VRCFT）的 PICO 眼动与面部�
 
 PICO 头显的追踪数据可以通过多种发送端输出，包括 PicoFacialBridge、PICO Connect、Streaming Assistant 以及早期的 PicoFacialDataDaemon。这些发送端使用的数据格式和端口各不相同。本模块支持上述全部格式，能够自动识别当前可用的数据源，并将数据统一输出至 VRCFT，因此无需针对不同的发送端分别安装模块。
 
-> 当前版本为 0.3.0，基于 VRCFT 5.4.5（net10.0）构建。各使用组合的验证情况请参阅[兼容性](#兼容性)，版本变化见[更新日志](CHANGELOG_zh.md)。
+> 当前版本为 0.4.0，基于 VRCFT 5.4.5（net10.0）构建。各使用组合的验证情况请参阅[兼容性](#兼容性)，版本变化见[更新日志](CHANGELOG_zh.md)。
 
 ## 支持的发送端
 
@@ -25,7 +25,7 @@ PICO 头显的追踪数据可以通过多种发送端输出，包括 PicoFacialB
 | 无头串流格式（如 Streaming Assistant） | 29763 | 视线与眼睑由表情模型驱动 | 支持 |
 | PicoFacialDataDaemon（536 字节格式） | 9030 | 视线与眼睑由表情模型驱动；有效时提供实测瞳孔直径 | 支持 |
 
-推荐使用 PicoFacialBridge，它提供实测瞳孔直径，并只发送 PC 端订阅的通道。逐眼独立表情（`X` 包）需要 PicoFacialBridge 0.4.0 及以上、头显端 [PicoET-Enhance](https://github.com/WolalaQAQ/PicoET-Enhance) 2.2.0 及以上，以及本模块 0.3.0 及以上；普通模式不需要增强模块，接受 Bridge 0.3.0 及以上。如果已经在使用 PICO Connect 串流，本模块也可以直接接收 29765 端口的面捕数据，视线由 `EyeLook` 系列表情推算。
+推荐使用 PicoFacialBridge，它提供实测瞳孔直径，并只发送 PC 端订阅的通道。逐眼独立表情（`X` 包）需要 PicoFacialBridge 0.4.0 及以上、头显端 [PicoET-Enhance](https://github.com/WolalaQAQ/PicoET-Enhance) 2.2.0 及以上，以及本模块 0.3.0 及以上；保持左眼、右眼和嘴各自时钟的高频 `X` v2 路径需要 PicoFacialBridge 0.5.0 及以上、PicoET-Enhance 2.3.0 及以上和本模块 0.4.0 及以上；普通模式不需要增强模块，接受 Bridge 0.3.0 及以上。如果已经在使用 PICO Connect 串流，本模块也可以直接接收 29765 端口的面捕数据，视线由 `EyeLook` 系列表情推算。
 
 ## 安装
 
@@ -80,6 +80,8 @@ PICO 头显的追踪数据可以通过多种发送端输出，包括 PicoFacialB
 
 独立眉值需要角色使用左右分开的眉参数。VRCFT 的合并参数 `v2/BrowInnerUp` 会对左右取平均，因此左=1、右=0时，位编码前的合并值为0.5。模块保留左右独立值，沿用官方 VRCFT 的参数规则。
 
+使用配套 `X` v2 发送端时，左右眼与嘴的观测分别更新和过期；眼快帧保留嘴部最近结果，不重复处理。v1/v2 布局见[协议参考](docs/protocol_zh.md#x独立眼部表情)。
+
 ### 数据源选择
 
 `Source` 为 `Auto` 时，模块会同时监听 Bridge 与串流端口。启动后的 1.5 秒内优先等待 Bridge 数据，超过这一时限后，采用最先提供有效数据的数据源。数据源一经选定，在本次运行期间保持不变，即使另一数据源随后开始发送数据，也不会切换过去。模块也不会同时使用两个数据源的数据，例如眼动取自一个来源、面部取自另一个来源。
@@ -104,11 +106,14 @@ Eye origin L/R=blendshape-derived/blendshape-derived; openness L/R=blendshape-bl
 | `state` | `Connected`：已连接并在接收数据。`MissingFrames`：对端在线，但数据中断，例如头显休眠或发送端暂停。`Searching`：尚未发现对端 |
 | `selected` | 该数据源是否为当前选用的数据源 |
 | `E/morphology` | 眼动数据与表情数据的接收频率 |
+| `groupRxHzLRM` | `X` v2 接纳的左眼／右眼／嘴频率；`CONSUMPTION` 另记处理和 SDK 写入，不代表 OSC 或 Avatar 刷新率 |
 | `Eye origin` | 当前或保持中的视线来源。`blendshape-derived`：由 `EyeLook` 形态推算。`neutral`：无保留值，或启用超时中性化后数据已过期 |
 | `openness` | 当前或保持中的睁眼度来源。`blendshape-blink`：由 `1 - EyeBlink` 得到。`neutral`：无保留值，或启用超时中性化后数据已过期 |
 | `pupil` | `measured` 为实测瞳孔直径；`estimated` 表示使用默认值 3.5 mm |
 
 使用 PICO Connect 时，日志中显示的数据源为 `Streaming/StreamingHeader16`；无论使用哪种发送端，视线来源均为 `blendshape-derived`。
+
+VRCFT 无需保持窗口前台。追踪期间，模块让官方 VRCFT 的定时精度请求在后台继续生效；停止或失败时只还原 `IGNORE_TIMER_RESOLUTION` 原有的控制／状态位，保留进程策略其他位的当前值。
 
 默认在数据过期后保留最近的视线、睁眼度、瞳孔直径和表情输出。设置 `Stale.NeutralizeOnTimeout=true` 可启用超时中性化：达到配置的过期时限后，视线回正、眼睛睁开、瞳孔改用中性值、表情归零。
 
@@ -185,11 +190,12 @@ Eye origin L/R=blendshape-derived/blendshape-derived; openness L/R=blendshape-bl
 
 | 发送端 | 验证内容 |
 |---|---|
-| PicoFacialBridge 0.4.0 搭配 PicoET-Enhance 2.2.0（增强模式，独立 `X` 包） | 在官方 VRCFT 5.4.5 上双通道接收，状态为 `Connected`、`enhance=True independent=True`；视线来自表情、眼睑来自 Blink、瞳孔为实测；通道订阅与眼动、面部开关 |
+| PicoFacialBridge 0.5.0 搭配 PicoET-Enhance 2.3.0（增强模式，`X` v2 包） | 在官方 VRCFT 5.4.5 上完成真人佩戴的 Virtual Desktop 串流验证：Cymple 嘴部加 PICO 眼部，以及仅 PICO 的眼部与眼面同开；Bridge 每秒约 89.7 个 `X` 包，每个包都带新的眼部源。到达 OSC 的速率取决于 VRCFT 宿主，见 [关于 90 Hz OSC](https://github.com/WolalaQAQ/PicoET-Enhance/blob/main/README_zh.md#关于-90-hz-osc) |
+| PicoFacialBridge 0.4.0 搭配 PicoET-Enhance 2.2.0（增强模式，独立 `X` v1 包） | 在官方 VRCFT 5.4.5 上双通道接收，状态为 `Connected`、`enhance=True independent=True`；视线来自表情、眼睑来自 Blink、瞳孔为实测；通道订阅与眼动、面部开关 |
 | PicoFacialBridge 0.3.0（BridgeSplit） | 通道订阅、眼动与面部开关、应用重启后恢复连接，以及 Avatar 表情跟随 |
 | PICO Connect 10.6.6（`faceTrackingTransferProtocol=2`，29765 端口） | 面部数据约 72 Hz，无丢包，Avatar 跟随正常 |
 
-增强路径使用事先录制的眼图，在头显上经原生眼部推理回放。录制约为 23.7 Hz 并以加速循环回放，因此验证的是推理吞吐与传输，不是真实 90 Hz 相机序列。长时间实机相机使用和单眼质量失效（状态 0）尚未覆盖。其他接入环境的使用结果可通过 issue 反馈。
+`X` v1 路径使用事先录制的眼图，在头显上以约 23.7 Hz 的加速循环经原生眼部推理回放。`X` v2 路径做过一次 84 秒的真人佩戴串流验证。长时间使用和单眼质量失效（状态 0）尚未覆盖。其他接入环境的使用结果可通过 issue 反馈。
 
 ## 网络安全与隐私
 
@@ -203,7 +209,7 @@ UDP 本身没有加密和身份验证。模块会校验来源地址与数据包�
 
 ```powershell
 git clone https://github.com/benaclejames/VRCFaceTracking.git .sdk/source/VRCFaceTracking
-git -C .sdk/source/VRCFaceTracking switch --detach 2cafd0e387386b54997797ee4709cad4befe9274
+git -C .sdk/source/VRCFaceTracking switch --detach 7add14873e398c4095d06913cdeee7a01fc43fab
 
 ./tools/build.ps1 -Configuration Release
 ./tools/package.ps1

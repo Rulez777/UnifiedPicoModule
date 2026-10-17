@@ -17,11 +17,11 @@ The build does not depend on an Android toolchain or any other PICO project. The
 
 ### Preparing the SDK source
 
-The module is compiled against VRCFaceTracking commit `2cafd0e387386b54997797ee4709cad4befe9274`, which corresponds to assembly version `5.4.5.0` and target framework `net10.0`. In the repository root, run:
+The module is compiled against VRCFaceTracking commit `7add14873e398c4095d06913cdeee7a01fc43fab`, which corresponds to assembly version `5.4.5.0` and target framework `net10.0`. In the repository root, run:
 
 ```powershell
 git clone https://github.com/benaclejames/VRCFaceTracking.git .sdk/source/VRCFaceTracking
-git -C .sdk/source/VRCFaceTracking switch --detach 2cafd0e387386b54997797ee4709cad4befe9274
+git -C .sdk/source/VRCFaceTracking switch --detach 7add14873e398c4095d06913cdeee7a01fc43fab
 ```
 
 `.sdk/` is a local cache directory and is excluded by `.gitignore`.
@@ -69,7 +69,7 @@ Changing the SDK version requires updating the commit and fingerprints in the sc
 ### UnifiedPicoModule.csproj
 
 - Targets `net10.0`, with nullable reference types and implicit usings enabled, and all warnings treated as errors.
-- The version is set by the `Version` property and is currently `0.3.0`.
+- The version is set by the `Version` property and is currently `0.4.0`.
 - References `VRCFaceTracking.SDK.dll` and `VRCFaceTracking.Core.dll` under `$(VrcftSdkDir)` through `HintPath`, with `Private=false`, so neither DLL is copied to the output directory. `VrcftSdkDir` defaults to `.sdk` in the repository and can be overridden as an MSBuild property.
 - The `CheckSdk` target checks that both DLLs exist before references are resolved and requires their assembly version to be `5.4.5.0`.
 - References `Microsoft.Extensions.Logging.Abstractions` 10.0.1 with `PrivateAssets="all"`.
@@ -93,7 +93,7 @@ The module metadata read by VRCFT contains the following fields:
 | Field | Current value or description |
 |---|---|
 | `ModuleId` | `8322e16d-c38b-42f0-8d35-68f27227b442`; also determines the module's directory name under `CustomLibs` |
-| `Version` | `0.3.0`; must match the version in `UnifiedPicoModule.csproj` |
+| `Version` | `0.4.0`; must match the version in `UnifiedPicoModule.csproj` |
 | `ModuleName` | `Unified PICO Face Tracking` |
 | `ModuleDescription` / `UsageInstructions` | Text shown in the module list |
 | `DownloadUrl` | Currently empty |
@@ -149,11 +149,11 @@ The timestamp in the file names keeps each run from overwriting earlier output. 
 4. Commit and push these changes, then create and push a tag for that commit:
 
 ```powershell
-git tag -a v0.3.0 -m "UnifiedPicoModule 0.3.0"
-git push origin v0.3.0
+git tag -a v0.4.0 -m "UnifiedPicoModule 0.4.0"
+git push origin v0.4.0
 ```
 
-The tag format is `vMAJOR.MINOR.PATCH`, optionally followed by a SemVer pre-release suffix such as `v0.3.0-rc.1`. Build metadata (`+build`) is not accepted, and leading zeros are not allowed in the numeric parts or in numeric pre-release identifiers.
+The tag format is `vMAJOR.MINOR.PATCH`, optionally followed by a SemVer pre-release suffix such as `v0.4.0-rc.1`. Build metadata (`+build`) is not accepted, and leading zeros are not allowed in the numeric parts or in numeric pre-release identifiers.
 
 ### Build job
 

@@ -10,7 +10,7 @@ The module implements these formats independently. For sources and licensing, se
 
 | Format (`InputProtocol`) | Sender | Local port | Datagram length | Content |
 |---|---|---:|---|---|
-| `BridgeSplit` | PicoFacialBridge 0.3.0 or later | 9030 | 83, 95, 151, 227; extension: 111 or 243 | 19-byte common header followed by subscribed channels; `X` adds independent-eye data |
+| `BridgeSplit` | PicoFacialBridge 0.3.0 or later | 9030 | 83, 95, 151, 227; `X` v1: 111/243, v2: 131/263 | 19-byte common header followed by subscribed channels; `X` adds independent-eye data |
 | `DaemonLegacy536` | PicoFacialDataDaemon | 9030 | 536 | 384-byte face prefix and 152-byte eye prefix |
 | `StreamingHeader16` | PICO Connect (legacy face tracking protocol) | 29765 | At least 908 | 16-byte header and 892-byte body; trailing bytes are ignored |
 | `StreamingBodyOnly` | Headerless streaming format | 29763 | 892 | Body only |
@@ -24,11 +24,13 @@ General conventions:
 
 ## Verification status
 
+The independent-expression `X` v2 path (PicoFacialBridge 0.5.0 with PicoET-Enhance 2.3.0) was verified on a PICO 4 Pro against official VRCFT 5.4.5 in an 84-second worn Virtual Desktop session: Cymple mouth with PICO eyes, and PICO eyes with face. The Bridge sent about 89.7 `X` packets per second, each with a new eye source. The `X` v1 acceptance below is the earlier recorded-input test.
+
 On 2026-10-01, `BridgeSplit` passed a first round of hardware acceptance on a PICO 4 Pro, covering discovery, mode announcements, subscription and acknowledgement, all four effective channel combinations, epoch agreement, cache clearing on changes, return to neutral when data stops, and recovery after an application restart. On the same day, the 29765 path passed acceptance with PICO Connect 10.6.6 (`faceTrackingTransferProtocol=2`). The measured datagrams were 912 bytes long (a 16-byte header and an 896-byte body).
 
 After a full headset reboot, starting Bridge and reconnecting the PC has also been verified. The following have not been verified: strict `HeaderProfile` mode, the 29763 path, other senders and versions, `DaemonLegacy536`, PicoFacialBridge normal mode, and long-term stability.
 
-The independent-expression `X` extension (PicoFacialBridge 0.4.0 with PicoET-Enhance 2.2.0) has been verified against official VRCFT 5.4.5. Eye images recorded earlier were replayed through native eye inference on the headset, and the PC received `E` and dual-channel `X` packets whose values matched the source outputs, with gaze and eyelids derived from expressions and each eye's own validity. The recording was about 23.7 Hz and replayed in an accelerated loop, so this shows inference throughput and transport rather than a real 90 Hz camera sequence. Long live-camera use and single-eye quality failure (state 0) have not been verified.
+The independent-expression `X` v1 extension (PicoFacialBridge 0.4.0 with PicoET-Enhance 2.2.0) was verified against official VRCFT 5.4.5. Eye images recorded earlier were replayed through native eye inference on the headset, and the PC received `E` and dual-channel `X` packets whose values matched the source outputs, with gaze and eyelids derived from expressions and each eye's own validity. The recording was about 23.7 Hz and replayed in an accelerated loop, so this shows inference throughput and transport rather than a real 90 Hz camera sequence. Long live-camera use and single-eye quality failure (state 0) have not been verified.
 
 ## Bridge connection flow
 
@@ -140,7 +142,7 @@ The epoch is based on the headset's monotonic uptime and may decrease after a fu
 | 1 | 1 | Effective channel mask, 1 to 3 |
 | 2 | 1 | Morphology validity: eye is 1, face is 2; must be a subset of the mask |
 | 3 | 8 | Epoch, positive signed int64 |
-| 11 | 8 | Source timestamp, positive signed int64; `A`, `F` and `X` use the face data's source time |
+| 11 | 8 | Source timestamp, positive signed int64; `A`, `F` and `X` v1 use the face source time. `X` v2 uses the left-eye source time, allowing 0 only when that group is not updated |
 
 ### Datagram types
 
@@ -152,6 +154,8 @@ The epoch is based on the headset's monotonic uptime and may decrease after a fu
 | `F` | 227 | Eye and face (3) | All 52 shapes |
 | `X` | 111 | Eye only (1) | Same 19 eye-region shapes as `A`, followed by a 16-byte independent-eye extension |
 | `X` | 243 | Eye and face (3) | Same 52 shapes as `F`, followed by that extension |
+| `X` | 131 | Eye only (1) | Same 19 shapes, with the 36-byte v2 extension |
+| `X` | 263 | Eye and face (3) | Same 52 shapes, with the 36-byte v2 extension |
 
 The datagrams sent for each mask are: `E` and `A` for eye only; only `F` (151 bytes) for face only; `E` and `F` (227 bytes) for both, without `A`.
 
@@ -163,14 +167,26 @@ The extension begins at byte 95 for mask 1, or byte 227 for mask 3:
 
 | Relative offset | Size | Field |
 |---:|---:|---|
-| 0 | 4 | uint32 version, exactly 1 |
+| 0 | 4 | uint32 version, 1 or 2 |
 | 4 | 4 | float32 filtered right inner brow; standard slot 3 is the left inner brow |
 | 8 | 4 | int32 left quality state: -1 unknown, 0 unusable, 1 usable |
 | 12 | 4 | int32 right quality state, same values |
 
+Version 1 ends after these 16 bytes. Version 2 appends:
+
+| Relative offset | Size | Field |
+|---:|---:|---|
+| 16 | 4 | uint32 updated groups: bit 0 left eye, bit 1 right eye, bit 2 mouth |
+| 20 | 8 | signed int64 mouth source timestamp |
+| 28 | 8 | signed int64 right-eye source timestamp |
+
+For v2, all three source timestamps must be nonnegative, and an updated group must have a positive timestamp. Mask 1 allows only update bits 0 and 1; mask 3 allows all three. An update mask of 0 carries no new observations.
+
 All shapes and the right inner brow must be finite. Other versions, states, masks or lengths are rejected. Eye shapes use their own side's state rather than the combined header eye-valid bit; -1 retains the data, without being treated as a known good classification. Non-eye shapes still use the header face-valid bit.
 
-Gaze and eyelids are expression-derived for `X` just as for ordinary packets; the quality states decide each eye's availability. An unusable eye holds its own last output, subject to the configured timeout behavior, never the other eye's values. Inner-brow separation is applied per side, and cross-eye BlinkAsymmetry is skipped. Extension and shapes share one epoch/timestamp and one face-sequence update. This extension requires support at both endpoints; older decoders reject `X`.
+Gaze and eyelids are expression-derived for `X` just as for ordinary packets; the quality states decide each eye's availability. An unusable eye holds its own last output, subject to the configured timeout behavior, never the other eye's values. Inner-brow separation is applied per side, and cross-eye BlinkAsymmetry is skipped.
+
+Version 1 uses one timestamp and face-sequence update. Version 2 shares the epoch but accepts each updated group independently: a duplicate or backward source time rejects only that group. Only accepted groups advance their sequence, arrival time and post-processing. Eye-only updates do not refresh or reprocess cached mouth data. A new unusable-eye observation advances its source identity but not the last usable output's freshness. New invalid mouth observations still reach processing to invalidate that group. Changing between grouped and ungrouped expressions clears cached input and output state. Both endpoints must support the extension version; older decoders reject unsupported `X` packets.
 
 ### `E`: native eye data (83 bytes)
 
@@ -216,7 +232,7 @@ The names and order of the 52 slots are defined by `PicoShape` in `Core/Contract
 
 If any shape value is non-finite, the whole datagram is discarded. Shapes have no per-slot presence flag: before sending, Bridge replaces an individual non-finite value with 0 without clearing the group validity, so the receiver cannot distinguish a measured 0 from a replaced non-finite value in that slot.
 
-Eye-region shapes (the 19 slots in the table above) are governed by the eye validity bit, and the remaining slots by the face validity bit. Valid eye-region shapes can be used even when face validity is not set.
+For ordinary packets, eye-region shapes (the 19 slots in the table above) are governed by the eye validity bit, and the remaining slots by the face validity bit. `X` uses each eye's quality state instead. Valid eye-region shapes can be used even when face validity is not set.
 
 ## DaemonLegacy536
 
@@ -324,11 +340,11 @@ A pupil diameter is used only when its status bit is valid, the converted value 
 
 Timestamp rules:
 
-- A signed int64 source timestamp is treated as a reliable clock only when positive. Zero or negative values are treated as missing timestamps, and arrival order applies.
-- Within one Generation, eye and face timestamps are checked separately, and duplicate or backward samples are discarded. `A`, `F` and `X` share the face timestamp sequence.
+- A signed int64 source timestamp is treated as a reliable clock only when positive. Legacy formats treat zero or negative values as missing timestamps and use arrival order. BridgeSplit requires positive timestamps, except for v2 groups not marked updated, which may use 0.
+- Within one Generation, native-eye and expression timestamps are checked separately. `A`, `F` and `X` v1 share the face timestamp sequence; `X` v2 maintains separate left-eye, right-eye and mouth sequences. Duplicate or backward samples do not advance the affected group's arrival time, sequence or processing state.
 - Freshness is based on the arrival time measured with the local monotonic clock. Control messages do not extend the freshness of data.
 
-Eye and face data arrive, are deduplicated and expire independently. The module does not interpolate or synthesize samples. A new eye sample does not cause cached expressions to be processed again.
+Native-eye data and each expression group arrive, are deduplicated and expire independently. The module does not interpolate or synthesize samples. A new native-eye sample does not cause cached expressions to be processed again. SDK updates reuse processed output between new group observations; only a pending `TongueHold` expiry can change mouth output without a new mouth sample.
 
 `Stale.NeutralizeOnTimeout` defaults to `false`: when data expires, gaze, openness and pupil diameter retain their last valid values, and expressions retain their last output. Freshness checks and post-processing timing resets still apply.
 
@@ -343,6 +359,12 @@ Output after expiry with `Stale.NeutralizeOnTimeout=true`:
 When no source is selected, the output is fully neutral. A new session, source or mode resets eye resolution and post-processing state. A Generation change caused solely by a connection or mode-announcement timeout retains eye and expression output when `NeutralizeOnTimeout=false`, while transport caches and post-processing timing state are still cleared. Module deactivation, teardown and update errors reset output.
 
 Expression shapes are mapped to VRCFT expression channels through a fixed table, limited to 0 to 1, with no gain applied during mapping. For the correction rules applied after mapping, see the [post-processing reference](postprocessing.md). `DisableEyeTracking` and `DisableFaceTracking` mask the eye-region shapes and the remaining shapes respectively.
+
+## SDK consumption and background timing
+
+`groupRxHzLRM` reports accepted left-eye/right-eye/mouth reception rates. `CONSUMPTION` separates processed groups, intermediate observations coalesced by the latest snapshot, and SDK writes containing new groups from repeated writes of the current output. Timing histograms cover reception to processing and SDK writing, not host IPC, OSC or Avatar rendering.
+
+Official VRCFT 5.4.5 requests a 1 ms timer period in its module process. While tracking, the module saves that process's Windows timer policy and disables only `IGNORE_TIMER_RESOLUTION`, so the request remains effective in the background. On deactivation, teardown or failure, it reads the current policy and restores only that bit's saved control/state settings, preserving all other current bits. If reading or writing fails, the saved snapshot remains available for a later retry. No foreground window, host modification, priority, CPU-throttling or power-plan change is needed. More frequent background wakeups can increase power use.
 
 ## Source selection
 

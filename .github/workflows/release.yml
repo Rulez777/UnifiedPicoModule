@@ -24,7 +24,7 @@ jobs:
       DOTNET_CLI_TELEMETRY_OPTOUT: '1'
       DOTNET_NOLOGO: '1'
       # tools/build.ps1 independently verifies this commit and its API fingerprints.
-      VRCFT_COMMIT: 2cafd0e387386b54997797ee4709cad4befe9274
+      VRCFT_COMMIT: 7add14873e398c4095d06913cdeee7a01fc43fab
     outputs:
       prerelease: ${{ steps.version.outputs.prerelease }}
     steps:

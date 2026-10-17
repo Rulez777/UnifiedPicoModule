@@ -137,8 +137,8 @@ SOFTWARE.
 
 - 作者：benaclejames
 - 仓库：https://github.com/benaclejames/VRCFaceTracking
-- 开发基线：[`2cafd0e387386b54997797ee4709cad4befe9274`](https://github.com/benaclejames/VRCFaceTracking/tree/2cafd0e387386b54997797ee4709cad4befe9274)，net10.0，AssemblyVersion 5.4.5.0
-- 许可证：Apache-2.0，见[固定提交的 LICENSE](https://github.com/benaclejames/VRCFaceTracking/blob/2cafd0e387386b54997797ee4709cad4befe9274/LICENSE) 与 [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)
+- 开发基线：[`7add14873e398c4095d06913cdeee7a01fc43fab`](https://github.com/benaclejames/VRCFaceTracking/tree/7add14873e398c4095d06913cdeee7a01fc43fab)，net10.0，AssemblyVersion 5.4.5.0
+- 许可证：Apache-2.0，见[固定提交的 LICENSE](https://github.com/benaclejames/VRCFaceTracking/blob/7add14873e398c4095d06913cdeee7a01fc43fab/LICENSE) 与 [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)
 - 版权声明：许可证的版权附录为 Copyright 2024 benaclejames
 - 用途：引用 SDK / Core 的接口。
 
@@ -171,7 +171,7 @@ AssemblyVersion 不能替代源码提交的固定版本，也不代表所有同�
 - [SAFT 固定源码树](https://github.com/regzo2/PicoStreamingAssistantFTUDP/tree/ab500f0355cd8bbf8f9f5b4e6bcfe43d16499cb7)
 - [pike LICENSE](https://github.com/pikepikeid/VRCFTPicoModule/blob/c026aa455da60dd50492b3d36c9d360d0c343b8e/LICENSE)
 - [lonelyicer 研究快照](https://github.com/lonelyicer/VRCFTPicoModule/tree/5046c9b726e33e461e7f389c73d94db26ae7c7f8)
-- [VRCFT 固定提交](https://github.com/benaclejames/VRCFaceTracking/tree/2cafd0e387386b54997797ee4709cad4befe9274)
+- [VRCFT 固定提交](https://github.com/benaclejames/VRCFaceTracking/tree/7add14873e398c4095d06913cdeee7a01fc43fab)
 - [协议偏移与能力边界](docs/protocol_zh.md)、[迁移与未复现差异](docs/configuration_zh.md)、[独立后处理语义](docs/postprocessing_zh.md)
 
 ## 商标说明
