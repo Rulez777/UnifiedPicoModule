@@ -68,10 +68,17 @@ public sealed class SourceCoordinator : IDisposable
         if (snapshot.State is ConnectionState.Faulted or ConnectionState.Stopped) return false;
         if (!config.DisableEyeTracking && snapshot.Eye is { } eye && MonotonicClock.Fresh(eye.Arrival, now, config.Stale.EyeMs) &&
             EyeResolver.HasConsumableNative(snapshot, config)) return true;
+        if (snapshot.GroupedExpressions)
+            return UsableGroup(snapshot.Face, now, !config.DisableEyeTracking, false) ||
+                UsableGroup(snapshot.RightFace, now, !config.DisableEyeTracking, false) ||
+                UsableGroup(snapshot.Mouth, now, false, !config.DisableFaceTracking);
         return snapshot.Face is { } face && MonotonicClock.Fresh(face.Arrival, now, config.Stale.FaceMs) &&
             (NeutralFaceMapper.HasConsumableExpressions(face, !config.DisableEyeTracking, !config.DisableFaceTracking) ||
                 !config.DisableEyeTracking && EyeResolver.HasConsumableFace(snapshot, config));
     }
+    private bool UsableGroup(RawFace? raw, double now, bool eyeEnabled, bool faceEnabled) =>
+        raw is not null && MonotonicClock.Fresh(raw.Arrival, now, config.Stale.FaceMs) &&
+        NeutralFaceMapper.HasConsumableExpressions(raw, eyeEnabled, faceEnabled);
     public IReadOnlyList<SourceSnapshot> Snapshots => sources.Select(s => s.Snapshot).ToArray();
     public void Dispose()
     {

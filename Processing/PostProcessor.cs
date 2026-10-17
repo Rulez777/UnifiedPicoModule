@@ -6,7 +6,7 @@ namespace UnifiedPicoModule.Processing;
 /// <summary>
 /// Independently implemented from the project's 2026-10-01 post-processing specification,
 /// not from SAFT, pike or lonelyicer implementation code. Contains no SDK dependency.
-/// The caller supplies validated settings and calls Process only for a new F sample.
+/// The caller supplies validated settings and calls Process only for a new expression-group sample.
 /// Single-consumer instance: reset on stale input, session/mode/config changes or output stop.
 /// </summary>
 public sealed class PostProcessor
@@ -67,7 +67,7 @@ public sealed class PostProcessor
     }
 
     /// <summary>
-    /// Call only while the cached F remains fresh. Returns a copy even before expiry.
+    /// Call only while the cached expression group remains fresh. Returns a copy even before expiry.
     /// Does not rerun nonlinear rules, advance mouth smoothing or apply gain twice.
     /// Repeated calls also repair copies of the original held snapshot after expiration.
     /// </summary>

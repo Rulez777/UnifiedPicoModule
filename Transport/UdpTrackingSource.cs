@@ -22,9 +22,11 @@ public abstract class UdpTrackingSource : ITrackingSource
     private CancellationTokenSource? cancellation;
     private Task? worker;
     private bool started;
-    private ulong? eyeTimestamp, faceTimestamp;
+    private ulong? eyeTimestamp, faceTimestamp, rightFaceTimestamp, mouthTimestamp;
     private double nextDiagnostic, rateStart;
     private long eyeCount, faceCount, auxiliaryCount;
+    private long xReceived, xAccepted, xV1, xV2, leftUpdates, rightUpdates, mouthUpdates;
+    private long leftRejected, rightRejected, mouthRejected;
 
     protected UdpTrackingSource(SourceKind source, Action<string> log)
     {
@@ -109,19 +111,34 @@ public abstract class UdpTrackingSource : ITrackingSource
     protected void Reset(InputProtocol? protocol, CapabilitySnapshot capabilities, ConnectionState state, string detail,
         bool timeout = false)
     {
-        eyeTimestamp = faceTimestamp = null;
+        eyeTimestamp = faceTimestamp = rightFaceTimestamp = mouthTimestamp = null;
         eyeCount = faceCount = auxiliaryCount = 0;
+        xReceived = xAccepted = xV1 = xV2 = leftUpdates = rightUpdates = mouthUpdates = 0;
+        leftRejected = rightRejected = mouthRejected = 0;
         rateStart = MonotonicClock.Now;
         // Timeout generations clear transport state, but can retain output. Keep a separate
         // generation so a later timeout cannot hide an intervening session/mode change.
         Publish(Current with { Generation = Current.Generation + 1,
             OutputGeneration = Current.OutputGeneration + (timeout ? 0 : 1), Protocol = protocol,
-            Capabilities = capabilities, State = state, Eye = null, Face = null, Detail = detail });
+            Capabilities = capabilities, State = state, Eye = null, Face = null, Mouth = null, RightFace = null,
+            GroupedExpressions = timeout && Current.GroupedExpressions, Detail = detail });
         Log($"{Current.Source}: generation={Current.Generation}, protocol={protocol?.ToString() ?? "unlocked"}, {detail}");
     }
 
     protected bool Commit(DecodedPacket packet)
     {
+        if (packet.Face is { } morphology)
+        {
+            bool grouped = morphology.IndependentEyes is { Version: 2 };
+            if (grouped != Current.GroupedExpressions)
+                Reset(Current.Protocol, Current.Capabilities, Current.State, "Expression group clock mode changed");
+            if (morphology.IndependentEyes is { } extension)
+            {
+                xReceived++;
+                if (extension.Version == 2) xV2++; else xV1++;
+            }
+            if (grouped) return CommitGrouped(morphology, packet.EyeAuxiliary);
+        }
         var eye = packet.Eye;
         var face = packet.Face;
         if (eye is not null && !Advance(eye.SourceTimestamp, ref eyeTimestamp)) eye = null;
@@ -138,6 +155,47 @@ public abstract class UdpTrackingSource : ITrackingSource
             State = ConnectionState.Connected, Detail = "Validated datagrams; validity is per field" });
         if (eye is not null) eyeCount++;
         if (face is not null) { if (packet.EyeAuxiliary) auxiliaryCount++; else faceCount++; }
+        if (face?.IndependentEyes is not null) { xAccepted++; leftUpdates++; rightUpdates++; if (!packet.EyeAuxiliary) mouthUpdates++; }
+        return true;
+    }
+
+    private bool CommitGrouped(RawFace raw, bool auxiliary)
+    {
+        var independent = raw.IndependentEyes!;
+        uint updated = independent.GroupUpdated;
+        RawFace? left = null, right = null, mouth = null;
+        if ((updated & 1) != 0)
+        {
+            if (Advance(raw.SourceTimestamp, ref faceTimestamp)) left = raw.EyeObservation(true);
+            else { leftRejected++; Warn("left-expression-timestamp", "Duplicate/backward left expression source rejected"); }
+        }
+        if ((updated & 2) != 0)
+        {
+            if (Advance(independent.RightSourceTimestamp, ref rightFaceTimestamp)) right = raw.EyeObservation(false);
+            else { rightRejected++; Warn("right-expression-timestamp", "Duplicate/backward right expression source rejected"); }
+        }
+        if ((updated & 4) != 0)
+        {
+            if (Advance(independent.MouthSourceTimestamp, ref mouthTimestamp)) mouth = raw.MouthObservation();
+            else { mouthRejected++; Warn("mouth-timestamp", "Duplicate/backward mouth source rejected"); }
+        }
+        if (left is null && right is null && mouth is null && updated != 0)
+        {
+            Drop("group-timestamp", "All updated X groups have duplicate/backward source times");
+            return false;
+        }
+        Publish(Current with { GroupedExpressions = true, Face = left ?? Current.Face,
+            FaceSequence = Current.FaceSequence + (left is null ? 0 : 1), RightFace = right ?? Current.RightFace,
+            RightFaceSequence = Current.RightFaceSequence + (right is null ? 0 : 1), Mouth = mouth ?? Current.Mouth,
+            MouthSequence = Current.MouthSequence + (mouth is null ? 0 : 1),
+            State = updated == 0 ? Current.State : ConnectionState.Connected,
+            Detail = "X v2: independent L/R/mouth source clocks" });
+        if (updated == 0) return true;
+        xAccepted++;
+        if (left is not null) leftUpdates++;
+        if (right is not null) rightUpdates++;
+        if (mouth is not null) mouthUpdates++;
+        if (auxiliary) auxiliaryCount++; else faceCount++;
         return true;
     }
 
@@ -211,10 +269,16 @@ public abstract class UdpTrackingSource : ITrackingSource
             var faceAge = Current.Face is null ? "none" : $"{(now - Current.Face.Arrival) * 1000:F0}ms";
             Log($"{Current.Source}: state={Current.State} protocol={Current.Protocol} generation={Current.Generation} " +
                 $"E={eyeCount / elapsed:F1}Hz F={faceCount / elapsed:F1}Hz A={auxiliaryCount / elapsed:F1}Hz eyeAge={eyeAge} morphologyAge={faceAge} " +
-                $"eyeMorphValid={Current.Face?.EyeValid == true} faceValid={Current.Face?.FaceValid == true} " +
+                $"eyeMorphValid={Current.Face?.EyeValid == true} faceValid={(Current.GroupedExpressions ? Current.Mouth : Current.Face)?.FaceValid == true} " +
                 $"modeKnown={Current.Capabilities.ModeKnown} independent={Current.Capabilities.IndependentPerEye} drops={Current.DroppedPackets}");
+            Log($"{Current.Source}: X_RECEIVE windowMs={elapsed * 1000:F0} validated={xReceived} accepted={xAccepted} " +
+                $"v1={xV1} v2={xV2} updatesLRM={leftUpdates}/{rightUpdates}/{mouthUpdates} " +
+                $"rejectedLRM={leftRejected}/{rightRejected}/{mouthRejected} " +
+                $"xRxHz={xAccepted / elapsed:F1} sourceHzLRM={leftUpdates / elapsed:F1}/{rightUpdates / elapsed:F1}/{mouthUpdates / elapsed:F1}");
         }
         eyeCount = faceCount = auxiliaryCount = 0;
+        xReceived = xAccepted = xV1 = xV2 = leftUpdates = rightUpdates = mouthUpdates = 0;
+        leftRejected = rightRejected = mouthRejected = 0;
         rateStart = now;
         nextDiagnostic = now + 5;
     }
@@ -263,10 +327,11 @@ public abstract class UdpTrackingSource : ITrackingSource
                             lock (Gate) { if (!Ending) Drop("oversize", "Oversized datagram rejected"); }
                             continue;
                         }
+                        double arrival = MonotonicClock.Now; // After ReceiveFrom, before the publication lock/decoder.
                         lock (Gate)
                         {
                             if (Ending || token.IsCancellationRequested) break;
-                            Receive(socket, (IPEndPoint)sender, buffer.AsSpan(0, count), MonotonicClock.Now);
+                            Receive(socket, (IPEndPoint)sender, buffer.AsSpan(0, count), arrival);
                         }
                     } while (socket.Available > 0);
                 }
@@ -326,7 +391,8 @@ public abstract class UdpTrackingSource : ITrackingSource
             foreach (var socket in Volatile.Read(ref activeSockets)) socket.Dispose();
             var current = Snapshot;
             Volatile.Write(ref Current, current with { Generation = current.Generation + 1,
-                Protocol = null, Capabilities = new(), Eye = null, Face = null,
+                Protocol = null, Capabilities = new(), Eye = null, Face = null, RightFace = null, Mouth = null,
+                GroupedExpressions = false,
                 State = ConnectionState.Stopped, Detail = "Disposed; busy worker cleanup deferred, STOP is best-effort" });
             Log($"{current.Source}: teardown lock busy; sockets closed, STOP could not be guaranteed");
         }

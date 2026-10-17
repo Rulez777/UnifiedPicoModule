@@ -27,9 +27,12 @@ public sealed class EyeResolver(ModuleConfig config)
     {
         var native = snapshot.Eye is { } e && MonotonicClock.Fresh(e.Arrival, now, config.Stale.EyeMs) ? e : null;
         var face = snapshot.Face is { } f && MonotonicClock.Fresh(f.Arrival, now, config.Stale.FaceMs) ? f : null;
-        bool independentExpressions = snapshot.Face?.IndependentEyes is not null;
+        var rightFace = snapshot.GroupedExpressions
+            ? snapshot.RightFace is { } r && MonotonicClock.Fresh(r.Arrival, now, config.Stale.FaceMs) ? r : null
+            : face;
+        bool independentExpressions = snapshot.GroupedExpressions || snapshot.Face?.IndependentEyes is not null;
         return (ResolveSide(left, native?.Left, native, face, true, independentExpressions, now),
-            ResolveSide(right, native?.Right, native, face, false, independentExpressions, now));
+            ResolveSide(right, native?.Right, native, rightFace, false, independentExpressions, now));
     }
 
     private ResolvedEye ResolveSide(EyeState state, NativeEye? eye, RawEye? frame, RawFace? face,

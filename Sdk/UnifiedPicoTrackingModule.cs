@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using System.Runtime.InteropServices;
 using UnifiedPicoModule.Configuration;
 using UnifiedPicoModule.Core;
 using UnifiedPicoModule.Runtime;
@@ -18,7 +19,22 @@ public sealed class UnifiedPicoTrackingModule : ExtTrackingModule
     private SourceCoordinator? coordinator;
     private DiagnosticReporter? diagnostics;
     private bool ownsEye, ownsFace, stopped = true, wasActive;
+    private bool timerPolicyChanged, timerPolicyAttempted;
+    private PowerThrottlingState previousTimerPolicy;
     private double lastError;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PowerThrottlingState { public uint Version, ControlMask, StateMask; }
+    private const int ProcessPowerThrottling = 4;
+    private const uint IgnoreTimerResolution = 4;
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetProcessInformation(nint process, int kind,
+        ref PowerThrottlingState information, uint size);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetProcessInformation(nint process, int kind,
+        ref PowerThrottlingState information, uint size);
 
     public override (bool SupportsEye, bool SupportsExpression) Supported => (true, true);
     public override (bool eyeSuccess, bool expressionSuccess) Initialize(bool eyeAvailable, bool expressionAvailable)
@@ -50,7 +66,7 @@ public sealed class UnifiedPicoTrackingModule : ExtTrackingModule
             pipeline = new(config); diagnostics = new(Log); stopped = false;
             Status = ownsEye || ownsFace ? ModuleState.Active : ModuleState.Idle;
             if (ownsEye || ownsFace) StartSources();
-            Log("UnifiedPicoModule 0.3.0: VRCFT SDK 5.4.5 / net10. UDP is unauthenticated: trusted LAN only.");
+            Log("UnifiedPicoModule 0.4.0: X v1/v2; VRCFT SDK 5.4.5 / net10. UDP is unauthenticated: trusted LAN only.");
             return (ownsEye, ownsFace);
         }
     }
@@ -72,12 +88,20 @@ public sealed class UnifiedPicoTrackingModule : ExtTrackingModule
                     {
                         if (coordinator is null) StartSources();
                         var (selected, snapshots, now) = coordinator!.Select();
+                        if (selected?.State is ConnectionState.Faulted or ConnectionState.Stopped ||
+                            snapshots.All(s => s.State is ConnectionState.Faulted or ConnectionState.Stopped))
+                            RestoreTimerPolicy();
+                        else HonorTimerResolution();
                         var output = pipeline.Evaluate(selected, now);
-                        Write(output); diagnostics!.Report(snapshots, selected, output, now);
+                        double writeStarted = MonotonicClock.Now;
+                        Write(output);
+                        pipeline.Diagnostics.Written(writeStarted, MonotonicClock.Now);
+                        diagnostics!.Report(snapshots, selected, output, now, pipeline.Diagnostics);
                         wasActive = true;
                     }
                     catch (Exception exception)
                     {
+                        StopSources();
                         pipeline.Reset(); Write(pipeline.Neutral);
                         var now = MonotonicClock.Now;
                         if (now - lastError > 5) { Log($"Update recovered to neutral: {exception.GetType().Name}: {exception.Message}"); lastError = now; }
@@ -98,8 +122,62 @@ public sealed class UnifiedPicoTrackingModule : ExtTrackingModule
             ModuleInformation.Active = false; Status = ModuleState.Uninitialized;
         }
     }
-    private void StartSources() { coordinator = new(config, Log); wasActive = true; }
-    private void StopSources() { coordinator?.Dispose(); coordinator = null; }
+    private void StartSources()
+    {
+        try
+        {
+            HonorTimerResolution();
+            coordinator = new(config, Log);
+            wasActive = true;
+        }
+        catch
+        {
+            StopSources();
+            throw;
+        }
+    }
+    private void HonorTimerResolution()
+    {
+        if (!OperatingSystem.IsWindows() || timerPolicyAttempted || timerPolicyChanged) return;
+        timerPolicyAttempted = true;
+        // Official VRCFT 5.4.5 already requests a 1 ms timer period in its module process.
+        // Honor that request in the background; leave CPU throttling and priorities alone.
+        previousTimerPolicy = new() { Version = 1 };
+        uint size = (uint)Marshal.SizeOf<PowerThrottlingState>();
+        if (GetProcessInformation(-1, ProcessPowerThrottling, ref previousTimerPolicy, size))
+        {
+            var policy = previousTimerPolicy;
+            policy.ControlMask |= IgnoreTimerResolution;
+            policy.StateMask &= ~IgnoreTimerResolution;
+            timerPolicyChanged = SetProcessInformation(-1, ProcessPowerThrottling, ref policy, size);
+        }
+        Log($"Sandbox timer policy: honorResolution={timerPolicyChanged} error={(timerPolicyChanged ? 0 : Marshal.GetLastPInvokeError())}.");
+    }
+    private void StopSources()
+    {
+        try { coordinator?.Dispose(); }
+        finally { coordinator = null; RestoreTimerPolicy(); }
+    }
+    private void RestoreTimerPolicy()
+    {
+        timerPolicyAttempted = false;
+        if (!timerPolicyChanged) return;
+        var policy = new PowerThrottlingState { Version = 1 };
+        uint size = (uint)Marshal.SizeOf<PowerThrottlingState>();
+        bool restored = false;
+        if (GetProcessInformation(-1, ProcessPowerThrottling, ref policy, size))
+        {
+            // Other components may have changed non-timer bits while tracking.
+            policy.ControlMask = (policy.ControlMask & ~IgnoreTimerResolution) |
+                (previousTimerPolicy.ControlMask & IgnoreTimerResolution);
+            policy.StateMask = (policy.StateMask & ~IgnoreTimerResolution) |
+                (previousTimerPolicy.StateMask & IgnoreTimerResolution);
+            restored = SetProcessInformation(-1, ProcessPowerThrottling, ref policy, size);
+        }
+        // Keep the original snapshot if either call failed so the next stop can retry it.
+        if (restored) timerPolicyChanged = false;
+        Log($"Sandbox timer policy restored={restored} error={(restored ? 0 : Marshal.GetLastPInvokeError())}.");
+    }
     private void Log(string message) => Logger?.LogInformation("{UnifiedPicoMessage}", message);
 
     // Sole UnifiedTracking write boundary; never zero SDK channels we do not own.

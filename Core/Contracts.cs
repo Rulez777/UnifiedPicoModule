@@ -49,8 +49,10 @@ public static class MonotonicClock
         arrival > 0 && now >= arrival && (now - arrival) * 1000 <= milliseconds;
 }
 
-// EPI1 v1: -1 is unknown, 0 is unusable, 1 is usable; unknown retains its data.
-public sealed record IndependentEyeExpression(float RightInnerUp, int LeftState, int RightState);
+// EPI1: -1 is unknown, 0 is unusable, 1 is usable; v2 adds L/R/mouth source clocks.
+public sealed record IndependentEyeExpression(float RightInnerUp, int LeftState, int RightState,
+    int Version = 1, uint GroupUpdated = 7, ulong? MouthSourceTimestamp = null,
+    ulong? RightSourceTimestamp = null);
 
 public sealed class RawFace
 {
@@ -86,6 +88,11 @@ public sealed class RawFace
     public RawFace WithValidity(bool eyeEnabled, bool faceEnabled) =>
         new(values, present, EyeValid && eyeEnabled, FaceValid && faceEnabled, SourceTimestamp, Arrival, extra,
             IndependentEyes, eyeExpressionsEnabled && eyeEnabled);
+    public RawFace MouthObservation() => new(values, present, false, FaceValid,
+        IndependentEyes!.MouthSourceTimestamp, Arrival, extra, eyeExpressionsEnabled: false);
+    public RawFace EyeObservation(bool isLeft) => new(values, present, EyeValid, false,
+        isLeft ? SourceTimestamp : IndependentEyes!.RightSourceTimestamp, Arrival, extra,
+        isLeft ? IndependentEyes! with { RightState = 0 } : IndependentEyes! with { LeftState = 0 }, eyeExpressionsEnabled);
     private static bool IsLeftEyeShape(PicoShape shape) => shape is PicoShape.EyeLookDownL or PicoShape.EyeLookInL or
         PicoShape.BrowInnerUp or PicoShape.BrowDownL or PicoShape.EyeSquintL or PicoShape.EyeBlinkL or
         PicoShape.BrowOuterUpL or PicoShape.EyeLookUpL or PicoShape.EyeLookOutL or PicoShape.EyeWideL;
@@ -105,7 +112,8 @@ public sealed record CapabilitySnapshot(bool ModeKnown = false, bool Enhanced = 
 public sealed record SourceSnapshot(SourceKind Source, long Generation, InputProtocol? Protocol,
     ConnectionState State, CapabilitySnapshot Capabilities, RawEye? Eye, long EyeSequence,
     RawFace? Face, long FaceSequence, double LastControl, long DroppedPackets, string Detail,
-    long OutputGeneration = 0)
+    long OutputGeneration = 0, RawFace? Mouth = null, long MouthSequence = 0, bool GroupedExpressions = false,
+    RawFace? RightFace = null, long RightFaceSequence = 0)
 {
     public static SourceSnapshot Empty(SourceKind kind) => new(kind, 0, null, ConnectionState.Searching,
         new(), null, 0, null, 0, 0, 0, "Waiting for validated input");
