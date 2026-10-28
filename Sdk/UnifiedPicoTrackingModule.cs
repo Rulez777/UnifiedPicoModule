@@ -135,11 +135,11 @@ public sealed class UnifiedPicoTrackingModule : ExtTrackingModule
             var moduleDir = Path.GetDirectoryName(GetType().Assembly.Location)!;
             var marker = Path.Combine(moduleDir, "tongue-experiment.enabled");
             var status = File.Exists(marker) && File.ReadAllText(marker).Trim() is { Length: > 0 } custom ? custom : Path.Combine(moduleDir, "tongue-status.json");
-            if(System.Net.IPAddress.TryParse(config.Bridge.IP, out var tongueIp))
-            {
-                try { tongue = new TongueReceiver(tongueIp, Log, status); }
-                catch(Exception ex) { Log($"Tongue receiver unavailable; normal tracking continues: {ex.Message}"); }
-            }
+            // Headset address: explicit Bridge.IP, otherwise the peer Bridge auto-discovery locked.
+            System.Net.IPAddress.TryParse(config.Bridge.IP, out var configuredIp);
+            var sources = coordinator;
+            try { tongue = new TongueReceiver(() => configuredIp ?? sources.BridgePeer, Log, status); }
+            catch(Exception ex) { Log($"Tongue receiver unavailable; normal tracking continues: {ex.Message}"); }
             wasActive = true;
         }
         catch
