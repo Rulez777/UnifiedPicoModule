@@ -9,7 +9,9 @@ namespace UnifiedPicoModule.Sdk;
 internal sealed class TongueReceiver : IDisposable
 {
     private readonly UdpClient socket;
-    private readonly IPEndPoint headset;
+    private readonly Func<IPAddress?> headsetAddress;   // configured Bridge.IP, else the auto-discovered Bridge peer
+    private readonly int headsetPort;
+    private IPAddress? headset;
     private long lastSubscribe;
     private readonly Action<string> log;
     private readonly string statusPath;
@@ -22,24 +24,26 @@ internal sealed class TongueReceiver : IDisposable
     private float puckerHold;
     private long puckerSeen;
     private static readonly byte[] Subscribe={(byte)'T',(byte)'S',(byte)'U',(byte)'B',1,0,0,0};
-    public TongueReceiver(IPAddress source,Action<string> logger,string diagnosticPath, int headsetPort=19031)
+    public TongueReceiver(Func<IPAddress?> address,Action<string> logger,string diagnosticPath, int port=19031)
     {
-        log=logger;statusPath=diagnosticPath;headset=new IPEndPoint(source,headsetPort);
+        log=logger;statusPath=diagnosticPath;headsetAddress=address;headsetPort=port;
         socket=new UdpClient(new IPEndPoint(IPAddress.Any,0));socket.Client.Blocking=false;
-        log($"Tongue: Wi-Fi UDP subscription to {headset}; timeout350ms.");
+        log("Tongue: Wi-Fi UDP subscription to the Bridge headset (Bridge.IP or auto-discovery) port 19031; timeout350ms.");
     }
     public (bool Fresh,float Left,float Right,float Out) Poll(float stockTongueOut=1,float pucker=0)
     {
         if(lastSubscribe==0||Stopwatch.GetElapsedTime(lastSubscribe).TotalSeconds>=1)
         {
             lastSubscribe=Stopwatch.GetTimestamp();
-            try{socket.Send(Subscribe,Subscribe.Length,headset);}catch(SocketException){}
+            var current=headsetAddress();
+            if(current is not null&&!current.Equals(headset)){headset=current;log($"Tongue: subscribing to headset {current}:{headsetPort}");}
+            if(headset is not null)try{socket.Send(Subscribe,Subscribe.Length,new IPEndPoint(headset,headsetPort));}catch(SocketException){}
         }
         for(int i=0;i<64;i++)
         {
             byte[] p;IPEndPoint? from=null;
             try{if(socket.Available<=0)break;p=socket.Receive(ref from);}catch(SocketException){break;}
-            if(p.Length!=24||from is null||!from.Address.Equals(headset.Address))continue;
+            if(p.Length!=24||from is null||headset is null||!from.Address.Equals(headset))continue;
             if(!p.AsSpan(0,4).SequenceEqual("TNG2"u8))continue;
             float l=BinaryPrimitives.ReadSingleLittleEndian(p.AsSpan(8)),r=BinaryPrimitives.ReadSingleLittleEndian(p.AsSpan(12));
             float o=BinaryPrimitives.ReadSingleLittleEndian(p.AsSpan(16)),c=BinaryPrimitives.ReadSingleLittleEndian(p.AsSpan(20));
