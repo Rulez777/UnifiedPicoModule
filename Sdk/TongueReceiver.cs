@@ -14,7 +14,7 @@ internal sealed class TongueReceiver : IDisposable
     private IPAddress? headset;
     private long lastSubscribe;
     private readonly Action<string> log;
-    private readonly string statusPath;
+    private readonly string? statusPath;   // diagnostics: null in normal use
     private long received,reported;
     private uint sequence;
     private float left,right,tongueOut,confidence;
@@ -24,7 +24,7 @@ internal sealed class TongueReceiver : IDisposable
     private float puckerHold;
     private long puckerSeen;
     private static readonly byte[] Subscribe={(byte)'T',(byte)'S',(byte)'U',(byte)'B',1,0,0,0};
-    public TongueReceiver(Func<IPAddress?> address,Action<string> logger,string diagnosticPath, int port=19031)
+    public TongueReceiver(Func<IPAddress?> address,Action<string> logger,string? diagnosticPath, int port=19031)
     {
         log=logger;statusPath=diagnosticPath;headsetAddress=address;headsetPort=port;
         socket=new UdpClient(new IPEndPoint(IPAddress.Any,0));socket.Client.Blocking=false;
@@ -71,7 +71,7 @@ internal sealed class TongueReceiver : IDisposable
         float gate=Math.Clamp((combined-.05f)/.15f,0,1);
         float modelLeft=uncertain&&held?heldLeft:left,modelRight=uncertain&&held?heldRight:right;
         float finalLeft=fresh?modelLeft*gate:0,finalRight=fresh?modelRight*gate:0;
-        if(reported==0||Stopwatch.GetElapsedTime(reported,now).TotalSeconds>=1)
+        if(statusPath is not null&&(reported==0||Stopwatch.GetElapsedTime(reported,now).TotalSeconds>=1))
         {
             reported=now;
             try{File.WriteAllText(statusPath,System.Text.Json.JsonSerializer.Serialize(new{sequence,fresh,left=finalLeft,right=finalRight,tongueOut=combined,nativeOut=native,pucker,puckerGate,confidence,negative,uncertain,held,modelOut=fresh?tongueOut:0,transport="UDP",utc=DateTime.UtcNow}));}catch(IOException){}catch(UnauthorizedAccessException){}

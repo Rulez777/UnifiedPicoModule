@@ -131,11 +131,12 @@ public sealed class UnifiedPicoTrackingModule : ExtTrackingModule
             HonorTimerResolution();
             coordinator = new(config, Log);
             // Tongue L/R from the PicoET-Enhance payload over Wi-Fi. Always on: with no headset
-            // replies it stays not-fresh and leaves the stock tongue untouched. An optional
-            // tongue-experiment.enabled file may name a different status-file path.
+            // replies it stays not-fresh and leaves the stock tongue untouched. Diagnostics are off: an
+            // empty tongue-diagnostics.enabled file next to the DLL turns on tongue-status.json and a
+            // once-a-second log line (the file may instead contain another path for the status file).
             var moduleDir = Path.GetDirectoryName(GetType().Assembly.Location)!;
-            var marker = Path.Combine(moduleDir, "tongue-experiment.enabled");
-            var status = File.Exists(marker) && File.ReadAllText(marker).Trim() is { Length: > 0 } custom ? custom : Path.Combine(moduleDir, "tongue-status.json");
+            var marker = Path.Combine(moduleDir, "tongue-diagnostics.enabled");
+            string? status = !File.Exists(marker) ? null : File.ReadAllText(marker).Trim() is { Length: > 0 } custom ? custom : Path.Combine(moduleDir, "tongue-status.json");
             // Headset address: explicit Bridge.IP, otherwise the peer Bridge auto-discovery locked.
             System.Net.IPAddress.TryParse(config.Bridge.IP, out var configuredIp);
             var sources = coordinator;

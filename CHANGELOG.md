@@ -2,6 +2,15 @@
 
 English | [简体中文](CHANGELOG_zh.md)
 
+## [0.4.1-tongue.4] - 2026-11-10 (fork Rulez777/UnifiedPicoModule)
+
+### Features
+- Tongue left/right from the PicoET-Enhance tongue payload over Wi-Fi (UDP 19031), rebased onto 0.4.1: works with VRCFT 5.4.5 and Steam VRCFT 6.0.0.0.
+- `Install.cmd` in the release zip copies the module into VRCFaceTracking's `CustomLibs` and keeps the existing configuration.
+
+### Changed
+- Tongue diagnostics are off by default: `tongue-status.json` and the once-a-second log line appear only when `tongue-diagnostics.enabled` exists next to the DLL.
+
 ## [0.4.1] - 2026-11-05
 
 ### Features
