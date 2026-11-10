@@ -16,7 +16,7 @@ Tracking data from a PICO headset can be delivered by several senders, including
 
 > **This fork (Rulez777): tongue left/right.** It is UnifiedPicoModule 0.4.1 plus a receiver for the tongue computed on the headset by [PicoET-Enhance (tongue fork)](https://github.com/Rulez777/PicoET-Enhance): `TongueLeft` / `TongueRight` and a `TongueOut` fallback, over Wi-Fi (the module asks the headset on UDP 19031; no ADB, no firewall rule). Everything else is unchanged.
 >
-> **Install:** download `UnifiedPicoModule-0.4.1-tongue.4.zip` from the [PicoET-Enhance release](https://github.com/Rulez777/PicoET-Enhance/releases/latest), unpack it, close VRCFaceTracking and double-click `Install.cmd`. It copies the module into `%APPDATA%\VRCFaceTracking\CustomLibs` and keeps your existing `UnifiedPicoModule.json`. The headset side is one Magisk zip from the same release.
+> **Install:** download `UnifiedPicoModule-0.4.1-tongue.4.zip` from the [PicoET-Enhance release](https://github.com/Rulez777/PicoET-Enhance/releases/latest), unpack it, close VRCFaceTracking and double-click `Install.cmd`. It copies the module into `%APPDATA%\VRCFaceTracking\CustomLibs` and keeps your existing `UnifiedPicoModule.json`. `Uninstall.cmd` in the same zip puts the previous DLL back. The headset side is one Magisk zip from the same release.
 >
 > Tongue diagnostics are off by default. An empty file `tongue-diagnostics.enabled` next to the DLL turns on `tongue-status.json` (updated once a second) and a once-a-second log line.
 

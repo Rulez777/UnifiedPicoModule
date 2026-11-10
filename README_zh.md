@@ -12,7 +12,7 @@
 
 > **本分支（Rulez777）：舌头左右。** 即 UnifiedPicoModule 0.4.1 加上舌头接收：舌头由 [PicoET-Enhance（舌头分支）](https://github.com/Rulez777/PicoET-Enhance) 在头显上计算，经 Wi-Fi 提供 `TongueLeft` / `TongueRight` 及 `TongueOut` 补充值（模块向头显 UDP 19031 订阅；无需 ADB，无需防火墙规则）。其余部分不变。
 >
-> **安装：** 从 [PicoET-Enhance Release](https://github.com/Rulez777/PicoET-Enhance/releases/latest) 下载 `UnifiedPicoModule-0.4.1-tongue.4.zip`，解压，关闭 VRCFaceTracking，双击 `Install.cmd`。它会把模块复制到 `%APPDATA%\VRCFaceTracking\CustomLibs`，并保留已有的 `UnifiedPicoModule.json`。头显端只需同一 Release 中的一个 Magisk zip。
+> **安装：** 从 [PicoET-Enhance Release](https://github.com/Rulez777/PicoET-Enhance/releases/latest) 下载 `UnifiedPicoModule-0.4.1-tongue.4.zip`，解压，关闭 VRCFaceTracking，双击 `Install.cmd`。它会把模块复制到 `%APPDATA%\VRCFaceTracking\CustomLibs`，并保留已有的 `UnifiedPicoModule.json`。同一 zip 中的 `Uninstall.cmd` 可恢复之前的 DLL。头显端只需同一 Release 中的一个 Magisk zip。
 >
 > 舌头诊断默认关闭。在 DLL 旁放一个空文件 `tongue-diagnostics.enabled` 即可开启 `tongue-status.json`（每秒更新）和每秒一行日志。
 
