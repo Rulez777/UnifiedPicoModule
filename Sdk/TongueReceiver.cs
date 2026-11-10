@@ -21,8 +21,8 @@ internal sealed class TongueReceiver : IDisposable
     private bool fallbackActive,negative,uncertain;
     private long lastVisual;
     private float heldLeft,heldRight,heldOut;
-    private float puckerHold;
-    private long puckerSeen;
+    private float puckerHold,puffHold;
+    private long puckerSeen,puffSeen;
     private static readonly byte[] Subscribe={(byte)'T',(byte)'S',(byte)'U',(byte)'B',1,0,0,0};
     public TongueReceiver(Func<IPAddress?> address,Action<string> logger,string? diagnosticPath, int port=19031)
     {
@@ -30,7 +30,7 @@ internal sealed class TongueReceiver : IDisposable
         socket=new UdpClient(new IPEndPoint(IPAddress.Any,0));socket.Client.Blocking=false;
         log("Tongue: Wi-Fi UDP subscription to the Bridge headset (Bridge.IP or auto-discovery) port 19031; timeout350ms.");
     }
-    public (bool Fresh,float Left,float Right,float Out) Poll(float stockTongueOut=1,float pucker=0)
+    public (bool Fresh,float Left,float Right,float Out) Poll(float stockTongueOut=1,float pucker=0,float cheekPuff=0)
     {
         if(lastSubscribe==0||Stopwatch.GetElapsedTime(lastSubscribe).TotalSeconds>=1)
         {
@@ -67,14 +67,20 @@ internal sealed class TongueReceiver : IDisposable
         // strongest recent gate for 400ms after PICO's pucker drops.
         if(puckerNow>=puckerHold||Stopwatch.GetElapsedTime(puckerSeen,now).TotalMilliseconds>400){puckerHold=puckerNow;puckerSeen=now;}
         float puckerGate=Math.Max(puckerNow,puckerHold);
-        float combined=Math.Max(native,fallback*(1-puckerGate)); // 05D1A46 baseline: native plus model fallback.
+        // Puffed cheeks need sealed lips, so no tongue can be out: while PICO sees a cheek puff (and
+        // for 400ms after it), neither the model nor PICO's own TongueOut may show a tongue. Both
+        // were seen to fire on a puff.
+        float puffNow=Math.Clamp((cheekPuff-.30f)/.20f,0,1);
+        if(puffNow>=puffHold||Stopwatch.GetElapsedTime(puffSeen,now).TotalMilliseconds>400){puffHold=puffNow;puffSeen=now;}
+        float puffGate=Math.Max(puffNow,puffHold);
+        float combined=Math.Max(native,fallback*(1-puckerGate))*(1-puffGate); // native plus model fallback, none on a cheek puff
         float gate=Math.Clamp((combined-.05f)/.15f,0,1);
         float modelLeft=uncertain&&held?heldLeft:left,modelRight=uncertain&&held?heldRight:right;
         float finalLeft=fresh?modelLeft*gate:0,finalRight=fresh?modelRight*gate:0;
         if(statusPath is not null&&(reported==0||Stopwatch.GetElapsedTime(reported,now).TotalSeconds>=1))
         {
             reported=now;
-            try{File.WriteAllText(statusPath,System.Text.Json.JsonSerializer.Serialize(new{sequence,fresh,left=finalLeft,right=finalRight,tongueOut=combined,nativeOut=native,pucker,puckerGate,confidence,negative,uncertain,held,modelOut=fresh?tongueOut:0,transport="UDP",utc=DateTime.UtcNow}));}catch(IOException){}catch(UnauthorizedAccessException){}
+            try{File.WriteAllText(statusPath,System.Text.Json.JsonSerializer.Serialize(new{sequence,fresh,left=finalLeft,right=finalRight,tongueOut=combined,nativeOut=native,pucker,puckerGate,cheekPuff,puffGate,confidence,negative,uncertain,held,modelOut=fresh?tongueOut:0,transport="UDP",utc=DateTime.UtcNow}));}catch(IOException){}catch(UnauthorizedAccessException){}
             log($"Tongue seq={sequence} fresh={fresh} L={(fresh?left:0):F3} R={(fresh?right:0):F3}");
         }
         return fresh?(true,finalLeft,finalRight,combined):(false,0,0,0);

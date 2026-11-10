@@ -204,7 +204,8 @@ public sealed class UnifiedPicoTrackingModule : ExtTrackingModule
         {
             float pucker=Math.Max(Math.Max(data.Shapes[(int)UnifiedExpressions.LipPuckerUpperLeft].Weight,data.Shapes[(int)UnifiedExpressions.LipPuckerUpperRight].Weight),
                 Math.Max(data.Shapes[(int)UnifiedExpressions.LipPuckerLowerLeft].Weight,data.Shapes[(int)UnifiedExpressions.LipPuckerLowerRight].Weight));
-            var t=tongue.Poll(data.Shapes[(int)UnifiedExpressions.TongueOut].Weight,pucker);
+            float cheekPuff=Math.Max(data.Shapes[(int)UnifiedExpressions.CheekPuffLeft].Weight,data.Shapes[(int)UnifiedExpressions.CheekPuffRight].Weight);
+            var t=tongue.Poll(data.Shapes[(int)UnifiedExpressions.TongueOut].Weight,pucker,cheekPuff);
             data.Shapes[(int)UnifiedExpressions.TongueLeft].Weight=t.Left;
             data.Shapes[(int)UnifiedExpressions.TongueRight].Weight=t.Right;
             if(t.Fresh) data.Shapes[(int)UnifiedExpressions.TongueOut].Weight=t.Out; // Native plus high-confidence, negative-trained fallback.
